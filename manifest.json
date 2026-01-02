@@ -1,0 +1,10 @@
+{
+  "id": "pkm-note-recommender",
+  "name": "PKM Note Recommender",
+  "version": "0.1.0",
+  "minAppVersion": "1.0.0",
+  "description": "노트 작성 시 관련 노트를 추천합니다. Tags와 graph 연결 기반 추천.",
+  "author": "PKM Project",
+  "authorUrl": "https://github.com/your-username",
+  "isDesktopOnly": false
+}

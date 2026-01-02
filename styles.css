@@ -1,0 +1,155 @@
+/**
+ * PKM Note Recommender - Plugin Styles
+ */
+
+/* Container */
+.pkm-recommendations-container {
+  padding: 10px;
+}
+
+/* Header */
+.pkm-recommendations-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.pkm-recommendations-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pkm-refresh-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.pkm-refresh-btn:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* Message */
+.pkm-recommendations-message {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 20px 10px;
+  text-align: center;
+}
+
+/* List */
+.pkm-recommendations-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* Item */
+.pkm-recommendation-item {
+  padding: 10px;
+  margin-bottom: 8px;
+  background-color: var(--background-secondary);
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.pkm-recommendation-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+/* Header (title + score) */
+.pkm-recommendation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.pkm-recommendation-title {
+  color: var(--text-normal);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pkm-recommendation-title:hover {
+  color: var(--text-accent);
+  text-decoration: underline;
+}
+
+/* Score badge */
+.pkm-recommendation-score {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.pkm-score-high {
+  background-color: var(--background-modifier-success);
+  color: var(--text-on-accent);
+}
+
+.pkm-score-medium {
+  background-color: var(--background-modifier-warning);
+  color: var(--text-on-accent);
+}
+
+.pkm-score-low {
+  background-color: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+/* Reasons */
+.pkm-recommendation-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pkm-recommendation-reason {
+  font-size: 11px;
+  color: var(--text-muted);
+  background-color: var(--background-primary);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Loading state */
+.pkm-loading {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+.pkm-loading::after {
+  content: '';
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--background-modifier-border);
+  border-top-color: var(--text-accent);
+  border-radius: 50%;
+  animation: pkm-spin 0.8s linear infinite;
+}
+
+@keyframes pkm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

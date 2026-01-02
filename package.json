@@ -1,0 +1,31 @@
+{
+  "name": "obsidian-pkm-note-recommender",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Obsidian plugin for PKM note recommendations based on tags and connections",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "obsidian",
+    "pkm",
+    "note-recommendations",
+    "zettelkasten"
+  ],
+  "author": "eohjun",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "builtin-modules": "^5.0.0",
+    "esbuild": "^0.27.0",
+    "eslint": "^9.0.0",
+    "obsidian": "^1.11.0",
+    "typescript": "^5.2.2"
+  }
+}
