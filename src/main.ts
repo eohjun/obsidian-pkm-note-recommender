@@ -380,6 +380,8 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
 
     if (leaf) {
       workspace.revealLeaf(leaf);
+      // Always refresh after revealing to ensure up-to-date recommendations
+      this.refreshRecommendations();
     }
   }
 
