@@ -321,7 +321,8 @@ export class PKMSettingTab extends PluginSettingTab {
       )
       .addButton((button) =>
         button.setButtonText('Test').onClick(async () => {
-          await this.testApiKey(settings);
+          // Get fresh settings (not the stale snapshot from display())
+          await this.testApiKey();
         }),
       );
 
@@ -425,15 +426,17 @@ export class PKMSettingTab extends PluginSettingTab {
   /**
    * Test API key validity
    */
-  private async testApiKey(settings: PKMPluginSettings): Promise<void> {
-    const apiKey = this.getApiKeyForProvider(settings);
+  private async testApiKey(): Promise<void> {
+    // Get fresh settings from adapter (not stale snapshot)
+    const currentSettings = this.settingsAdapter.getSettings();
+    const apiKey = this.getApiKeyForProvider(currentSettings);
 
     if (!apiKey) {
       new Notice('Please enter an API key first');
       return;
     }
 
-    if (!validateApiKeyFormat(settings.llm.provider, apiKey)) {
+    if (!validateApiKeyFormat(currentSettings.llm.provider, apiKey)) {
       new Notice('API key format looks incorrect');
       return;
     }
@@ -442,7 +445,7 @@ export class PKMSettingTab extends PluginSettingTab {
 
     try {
       const { createLLMProvider } = await import('../llm/index.js');
-      const provider = createLLMProvider(settings.llm.provider, { apiKey });
+      const provider = createLLMProvider(currentSettings.llm.provider, { apiKey });
       const isValid = await provider.validateApiKey();
 
       if (isValid) {
