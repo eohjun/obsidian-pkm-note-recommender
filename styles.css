@@ -153,3 +153,113 @@
     transform: rotate(360deg);
   }
 }
+
+/* Add connection button */
+.pkm-add-connection-btn {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: 6px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.pkm-add-connection-btn:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.pkm-add-btn-disabled {
+  background: var(--color-green);
+  cursor: default;
+  opacity: 0.8;
+}
+
+.pkm-add-btn-disabled:hover {
+  background: var(--color-green);
+}
+
+/* Connection classification row */
+.pkm-recommendation-connection {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 4px;
+  min-height: 20px;
+}
+
+.pkm-connection-loading {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.pkm-connection-spinner {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.pkm-connection-error {
+  font-size: 11px;
+  color: var(--text-error);
+}
+
+/* Classification badge */
+.pkm-classification-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.pkm-classification-context {
+  background-color: var(--color-purple);
+  color: var(--text-on-accent);
+}
+
+.pkm-classification-supplementary {
+  background-color: var(--color-blue);
+  color: var(--text-on-accent);
+}
+
+.pkm-classification-application {
+  background-color: var(--color-green);
+  color: var(--text-on-accent);
+}
+
+.pkm-classification-critical {
+  background-color: var(--color-red);
+  color: var(--text-on-accent);
+}
+
+.pkm-classification-intuitive {
+  background-color: var(--color-orange);
+  color: var(--text-on-accent);
+}
+
+.pkm-classification-default {
+  background-color: var(--background-modifier-border);
+  color: var(--text-normal);
+}
+
+/* Connection reason text */
+.pkm-connection-reason-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  flex: 1;
+}
+
+/* Hide original reasons when connection is ready */
+.pkm-reasons-hidden {
+  display: none;
+}

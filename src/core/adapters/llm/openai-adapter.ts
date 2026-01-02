@@ -12,6 +12,8 @@ import type {
   EmbeddingResponse,
   BatchEmbeddingRequest,
   BatchEmbeddingResponse,
+  TextCompletionRequest,
+  TextCompletionResponse,
 } from '../../domain/interfaces/llm-provider.interface.js';
 
 const OPENAI_MODELS = {
@@ -94,6 +96,29 @@ export class OpenAIAdapter implements ILLMProvider {
     } catch {
       return false;
     }
+  }
+
+  async generateCompletion(request: TextCompletionRequest): Promise<TextCompletionResponse> {
+    const model = 'gpt-4o-mini'; // Use efficient model for classifications
+
+    const response = await this.callApi('/chat/completions', {
+      model,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a helpful assistant that analyzes note connections in a PKM system. Always respond in JSON format when requested.',
+        },
+        { role: 'user', content: request.prompt },
+      ],
+      max_tokens: request.maxTokens ?? 200,
+      temperature: request.temperature ?? 0.3,
+    });
+
+    return {
+      text: response.choices[0]?.message?.content ?? '',
+      model,
+      tokenCount: response.usage?.total_tokens ?? 0,
+    };
   }
 
   private async callApi(

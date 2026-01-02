@@ -26,6 +26,15 @@ export type { RecommendationResultProps } from './value-objects/recommendation-r
 
 export { Embedding, cosineSimilarity } from './value-objects/embedding.js';
 
+export {
+  ConnectionClassification,
+  InvalidConnectionClassificationError,
+} from './value-objects/connection-classification.js';
+export type {
+  ConnectionClassificationType,
+  ConnectionClassificationProps,
+} from './value-objects/connection-classification.js';
+
 // Interfaces (Ports)
 export type {
   INoteRepository,
@@ -64,6 +73,8 @@ export type {
   EmbeddingResponse,
   BatchEmbeddingRequest,
   BatchEmbeddingResponse,
+  TextCompletionRequest,
+  TextCompletionResponse,
 } from './interfaces/llm-provider.interface.js';
 
 export type {

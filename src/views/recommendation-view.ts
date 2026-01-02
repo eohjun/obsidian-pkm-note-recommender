@@ -1,10 +1,20 @@
 /**
  * RecommendationView - Obsidian View for Note Recommendations
+ *
+ * Enhanced with:
+ * - Connection classification and reason display (LLM-generated)
+ * - Add connection button (+) for each recommendation
  */
 
-import { ItemView, type WorkspaceLeaf, type TFile } from 'obsidian';
-import type { RecommendNotesUseCase } from '../core/application/use-cases/recommend-notes.js';
+import { ItemView, Notice, type WorkspaceLeaf, type TFile } from 'obsidian';
+import type {
+  RecommendNotesUseCase,
+  RecommendationItem,
+} from '../core/application/use-cases/recommend-notes.js';
+import type { ConnectionReasonService, ConnectionReasonResult } from '../core/application/services/connection-reason-service.js';
+import type { AddConnectionUseCase } from '../core/application/use-cases/add-connection.js';
 import type { PKMPluginSettings } from '../core/adapters/obsidian/index.js';
+import type { ConnectionClassificationType } from '../core/domain/value-objects/connection-classification.js';
 
 export const VIEW_TYPE_RECOMMENDATIONS = 'pkm-recommendations-view';
 
@@ -12,22 +22,52 @@ const NOTE_ID_REGEX = /^(\d{12})/;
 
 export type StatusCallback = (status: 'ready' | 'loading' | 'error' | number) => void;
 
+type ConnectionStatus = 'pending' | 'loading' | 'ready' | 'error';
+
+interface EnhancedRecommendation extends RecommendationItem {
+  connection?: ConnectionReasonResult;
+  connectionStatus: ConnectionStatus;
+  isAdded: boolean;
+}
+
+interface ViewState {
+  sourceNoteId: string | null;
+  sourceFilePath: string | null;
+  sourceTitle: string | null;
+  sourceContent: string | null;
+  recommendations: EnhancedRecommendation[];
+}
+
 export class RecommendationView extends ItemView {
   private readonly recommendNotesUseCase: RecommendNotesUseCase;
+  private readonly connectionReasonService: ConnectionReasonService | null;
+  private readonly addConnectionUseCase: AddConnectionUseCase | null;
   private readonly settings: PKMPluginSettings;
   private readonly onStatusChange?: StatusCallback;
   private isLoading = false;
+
+  private state: ViewState = {
+    sourceNoteId: null,
+    sourceFilePath: null,
+    sourceTitle: null,
+    sourceContent: null,
+    recommendations: [],
+  };
 
   constructor(
     leaf: WorkspaceLeaf,
     recommendNotesUseCase: RecommendNotesUseCase,
     settings: PKMPluginSettings,
     onStatusChange?: StatusCallback,
+    connectionReasonService?: ConnectionReasonService | null,
+    addConnectionUseCase?: AddConnectionUseCase | null,
   ) {
     super(leaf);
     this.recommendNotesUseCase = recommendNotesUseCase;
     this.settings = settings;
     this.onStatusChange = onStatusChange;
+    this.connectionReasonService = connectionReasonService ?? null;
+    this.addConnectionUseCase = addConnectionUseCase ?? null;
   }
 
   getViewType(): string {
@@ -88,6 +128,20 @@ export class RecommendationView extends ItemView {
       return;
     }
 
+    // Store source note info
+    try {
+      const sourceContent = await this.app.vault.cachedRead(activeFile);
+      this.state.sourceNoteId = noteId;
+      this.state.sourceFilePath = activeFile.path;
+      this.state.sourceTitle = activeFile.basename.replace(/^\d{12}\s*/, '');
+      this.state.sourceContent = sourceContent;
+    } catch {
+      this.showMessage(contentEl as HTMLElement, 'Failed to read current note');
+      this.isLoading = false;
+      this.onStatusChange?.('error');
+      return;
+    }
+
     this.showMessage(contentEl as HTMLElement, 'Loading recommendations...');
 
     try {
@@ -109,13 +163,25 @@ export class RecommendationView extends ItemView {
       }
 
       if (response.recommendations.length === 0) {
-        this.showMessage(contentEl as HTMLElement, 'No related notes found. Try adding tags to your note.');
+        this.showMessage(contentEl as HTMLElement, 'No related notes found.');
         this.onStatusChange?.(0);
         return;
       }
 
-      this.renderRecommendations(contentEl as HTMLElement, response.recommendations);
+      // Convert to enhanced recommendations
+      this.state.recommendations = response.recommendations.map((rec) => ({
+        ...rec,
+        connectionStatus: 'pending' as ConnectionStatus,
+        isAdded: false,
+      }));
+
+      this.renderRecommendations(contentEl as HTMLElement);
       this.onStatusChange?.(response.recommendations.length);
+
+      // Start loading connection reasons in background
+      if (this.connectionReasonService?.isReady()) {
+        void this.loadConnectionReasons();
+      }
     } catch (error) {
       console.error('Failed to get recommendations:', error);
       this.showMessage(contentEl as HTMLElement, 'Failed to load recommendations');
@@ -136,41 +202,260 @@ export class RecommendationView extends ItemView {
     msgEl.setText(message);
   }
 
-  private renderRecommendations(
-    container: HTMLElement,
-    recommendations: Array<{ noteId: string; title: string; score: number; reasons: string[] }>,
-  ): void {
+  /**
+   * Load connection reasons for all recommendations asynchronously
+   */
+  private async loadConnectionReasons(): Promise<void> {
+    if (!this.connectionReasonService || !this.state.sourceContent) return;
+
+    for (let i = 0; i < this.state.recommendations.length; i++) {
+      const rec = this.state.recommendations[i];
+
+      // Check cache first
+      const cached = this.connectionReasonService.getCachedReason(
+        this.state.sourceNoteId!,
+        rec.noteId,
+      );
+
+      if (cached) {
+        this.state.recommendations[i] = {
+          ...rec,
+          connection: cached,
+          connectionStatus: 'ready',
+        };
+        this.updateItemUI(i);
+        continue;
+      }
+
+      // Mark as loading
+      this.state.recommendations[i] = { ...rec, connectionStatus: 'loading' };
+      this.updateItemUI(i);
+
+      try {
+        // Load target note content
+        const targetContent = await this.loadNoteContent(rec.noteId);
+        if (!targetContent) {
+          this.state.recommendations[i] = { ...rec, connectionStatus: 'error' };
+          this.updateItemUI(i);
+          continue;
+        }
+
+        const result = await this.connectionReasonService.generateConnectionReason(
+          this.state.sourceNoteId!,
+          this.state.sourceTitle!,
+          this.state.sourceContent!,
+          rec.noteId,
+          rec.title,
+          targetContent,
+        );
+
+        this.state.recommendations[i] = {
+          ...rec,
+          connection: result,
+          connectionStatus: 'ready',
+        };
+        this.updateItemUI(i);
+      } catch (error) {
+        console.error(`Failed to load connection reason for ${rec.noteId}:`, error);
+        this.state.recommendations[i] = { ...rec, connectionStatus: 'error' };
+        this.updateItemUI(i);
+      }
+    }
+  }
+
+  private async loadNoteContent(noteId: string): Promise<string | null> {
+    const files = this.app.vault.getFiles();
+    const file = files.find((f) => f.basename.startsWith(noteId));
+    if (!file) return null;
+
+    try {
+      return await this.app.vault.cachedRead(file);
+    } catch {
+      return null;
+    }
+  }
+
+  private renderRecommendations(container: HTMLElement): void {
     const listEl = container.createEl('ul', { cls: 'pkm-recommendations-list' });
 
-    for (const rec of recommendations) {
-      const itemEl = listEl.createEl('li', { cls: 'pkm-recommendation-item' });
-      const headerEl = itemEl.createEl('div', { cls: 'pkm-recommendation-header' });
+    for (let i = 0; i < this.state.recommendations.length; i++) {
+      this.renderRecommendationItem(listEl, i);
+    }
+  }
 
-      const titleEl = headerEl.createEl('a', {
-        cls: 'pkm-recommendation-title',
-        text: rec.title,
+  private renderRecommendationItem(listEl: HTMLElement, index: number): void {
+    const rec = this.state.recommendations[index];
+    const itemEl = listEl.createEl('li', {
+      cls: 'pkm-recommendation-item',
+      attr: { 'data-index': index.toString() },
+    });
+
+    // Header row: title + score + add button
+    const headerEl = itemEl.createEl('div', { cls: 'pkm-recommendation-header' });
+
+    const titleEl = headerEl.createEl('a', {
+      cls: 'pkm-recommendation-title',
+      text: rec.title,
+    });
+    titleEl.addEventListener('click', () => this.openNote(rec.noteId));
+
+    const scoreEl = headerEl.createEl('span', {
+      cls: 'pkm-recommendation-score',
+      text: `${Math.round(rec.score * 100)}%`,
+    });
+    this.applyScoreStyle(scoreEl, rec.score);
+
+    // Add connection button
+    if (this.addConnectionUseCase) {
+      const addBtn = headerEl.createEl('button', {
+        cls: rec.isAdded ? 'pkm-add-connection-btn pkm-add-btn-disabled' : 'pkm-add-connection-btn',
+        text: rec.isAdded ? '✓' : '+',
+        attr: {
+          'aria-label': '연결 추가',
+          'data-index': index.toString(),
+        },
       });
-      titleEl.addEventListener('click', () => this.openNote(rec.noteId));
 
-      const scoreEl = headerEl.createEl('span', {
-        cls: 'pkm-recommendation-score',
-        text: `${Math.round(rec.score * 100)}%`,
-      });
-
-      if (rec.score >= 0.7) {
-        scoreEl.addClass('pkm-score-high');
-      } else if (rec.score >= 0.4) {
-        scoreEl.addClass('pkm-score-medium');
+      if (rec.isAdded) {
+        addBtn.disabled = true;
       } else {
-        scoreEl.addClass('pkm-score-low');
+        addBtn.addEventListener('click', () => this.handleAddConnection(index));
       }
+    }
 
-      if (rec.reasons.length > 0) {
-        const reasonsEl = itemEl.createEl('div', { cls: 'pkm-recommendation-reasons' });
-        for (const reason of rec.reasons) {
-          reasonsEl.createEl('span', { cls: 'pkm-recommendation-reason', text: reason });
-        }
+    // Connection classification row
+    const connectionEl = itemEl.createEl('div', { cls: 'pkm-recommendation-connection' });
+    this.renderConnectionStatus(connectionEl, rec);
+
+    // Original reasons row (shown when connection is not ready)
+    if (rec.reasons.length > 0 && rec.connectionStatus !== 'ready') {
+      const reasonsEl = itemEl.createEl('div', { cls: 'pkm-recommendation-reasons' });
+      for (const reason of rec.reasons) {
+        reasonsEl.createEl('span', { cls: 'pkm-recommendation-reason', text: reason });
       }
+    }
+  }
+
+  private renderConnectionStatus(container: HTMLElement, rec: EnhancedRecommendation): void {
+    container.empty();
+
+    switch (rec.connectionStatus) {
+      case 'loading':
+        container.addClass('pkm-connection-loading');
+        container.createEl('span', {
+          cls: 'pkm-connection-spinner',
+          text: '분석 중...',
+        });
+        break;
+
+      case 'ready':
+        container.removeClass('pkm-connection-loading');
+        if (rec.connection) {
+          container.createEl('span', {
+            cls: `pkm-classification-badge pkm-classification-${this.getClassificationClass(rec.connection.classification)}`,
+            text: rec.connection.classification,
+          });
+          container.createEl('span', {
+            cls: 'pkm-connection-reason-text',
+            text: rec.connection.reason,
+          });
+        }
+        break;
+
+      case 'error':
+        container.removeClass('pkm-connection-loading');
+        container.createEl('span', {
+          cls: 'pkm-connection-error',
+          text: '분류 실패',
+        });
+        break;
+
+      case 'pending':
+        // Show nothing while pending
+        break;
+    }
+  }
+
+  private getClassificationClass(classification: ConnectionClassificationType): string {
+    const classMap: Record<ConnectionClassificationType, string> = {
+      '상위 맥락': 'context',
+      '보충 설명': 'supplementary',
+      '적용 사례': 'application',
+      '비판 관점': 'critical',
+      '연결 직관': 'intuitive',
+    };
+    return classMap[classification] || 'default';
+  }
+
+  private updateItemUI(index: number): void {
+    const itemEl = this.containerEl.querySelector(`[data-index="${index}"]`);
+    if (!itemEl) return;
+
+    const rec = this.state.recommendations[index];
+
+    // Update connection status
+    const connectionEl = itemEl.querySelector('.pkm-recommendation-connection');
+    if (connectionEl) {
+      this.renderConnectionStatus(connectionEl as HTMLElement, rec);
+    }
+
+    // Update add button if needed
+    const addBtn = itemEl.querySelector('.pkm-add-connection-btn') as HTMLButtonElement | null;
+    if (addBtn && rec.isAdded) {
+      addBtn.disabled = true;
+      addBtn.addClass('pkm-add-btn-disabled');
+      addBtn.setText('✓');
+    }
+
+    // Hide original reasons if connection is ready
+    const reasonsEl = itemEl.querySelector('.pkm-recommendation-reasons');
+    if (reasonsEl && rec.connectionStatus === 'ready') {
+      reasonsEl.addClass('pkm-reasons-hidden');
+    }
+  }
+
+  private async handleAddConnection(index: number): Promise<void> {
+    if (!this.addConnectionUseCase || !this.state.sourceFilePath) {
+      new Notice('연결 추가 기능을 사용할 수 없습니다.');
+      return;
+    }
+
+    const rec = this.state.recommendations[index];
+
+    // Use generated connection or default
+    const classification = rec.connection?.classification ?? '연결 직관';
+    const reason = rec.connection?.reason ?? '관련 주제로 연결됨';
+
+    try {
+      const result = await this.addConnectionUseCase.execute({
+        sourceFilePath: this.state.sourceFilePath,
+        targetNoteId: rec.noteId,
+        targetTitle: rec.title,
+        classification,
+        reason,
+      });
+
+      if (result.success) {
+        new Notice(result.message);
+        // Mark as added
+        this.state.recommendations[index] = { ...rec, isAdded: true };
+        this.updateItemUI(index);
+      } else {
+        new Notice(result.message);
+      }
+    } catch (error) {
+      console.error('Failed to add connection:', error);
+      new Notice('연결 추가 실패');
+    }
+  }
+
+  private applyScoreStyle(el: HTMLElement, score: number): void {
+    if (score >= 0.7) {
+      el.addClass('pkm-score-high');
+    } else if (score >= 0.4) {
+      el.addClass('pkm-score-medium');
+    } else {
+      el.addClass('pkm-score-low');
     }
   }
 

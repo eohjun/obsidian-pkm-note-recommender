@@ -45,6 +45,24 @@ export interface BatchEmbeddingResponse {
 }
 
 /**
+ * Text completion request (for generating connection reasons)
+ */
+export interface TextCompletionRequest {
+  prompt: string;
+  maxTokens?: number;
+  temperature?: number;
+}
+
+/**
+ * Text completion response
+ */
+export interface TextCompletionResponse {
+  text: string;
+  model: string;
+  tokenCount: number;
+}
+
+/**
  * Provider configuration
  */
 export interface LLMProviderConfig {
@@ -93,4 +111,10 @@ export interface ILLMProvider {
    * Validate the API key
    */
   validateApiKey(): Promise<boolean>;
+
+  /**
+   * Generate text completion (for connection reason generation)
+   * Returns a text response based on the given prompt.
+   */
+  generateCompletion(request: TextCompletionRequest): Promise<TextCompletionResponse>;
 }

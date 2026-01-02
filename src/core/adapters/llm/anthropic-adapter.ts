@@ -16,6 +16,8 @@ import type {
   EmbeddingResponse,
   BatchEmbeddingRequest,
   BatchEmbeddingResponse,
+  TextCompletionRequest,
+  TextCompletionResponse,
 } from '../../domain/interfaces/llm-provider.interface.js';
 
 const VOYAGE_MODELS = {
@@ -26,6 +28,7 @@ const VOYAGE_MODELS = {
 
 const DEFAULT_MODEL = 'voyage-3-lite';
 const DEFAULT_BASE_URL = 'https://api.voyageai.com/v1';
+const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1';
 
 /**
  * Anthropic (Voyage AI) LLM Provider Adapter
@@ -108,6 +111,58 @@ export class AnthropicAdapter implements ILLMProvider {
     } catch {
       return false;
     }
+  }
+
+  async generateCompletion(request: TextCompletionRequest): Promise<TextCompletionResponse> {
+    // For completion, we need to use the Anthropic Claude API
+    // This requires an Anthropic API key (starts with 'sk-ant-')
+    // Voyage AI keys (pa-*) only work for embeddings
+
+    if (!this.apiKey.startsWith('sk-ant-')) {
+      // Voyage AI key detected - completion not supported
+      // Return a placeholder that will trigger the fallback in ConnectionReasonService
+      throw new Error(
+        'Text completion requires an Anthropic API key (sk-ant-*). ' +
+        'Current key is for Voyage AI embeddings only.'
+      );
+    }
+
+    const model = 'claude-3-haiku-20240307'; // Use efficient model for classifications
+
+    const response = await fetch(`${ANTHROPIC_API_URL}/messages`, {
+      method: 'POST',
+      headers: {
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: request.maxTokens ?? 200,
+        messages: [
+          {
+            role: 'user',
+            content: request.prompt,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(
+        `Anthropic API error: ${response.status} - ${error.error?.message ?? response.statusText}`
+      );
+    }
+
+    const data = await response.json();
+    const text = data.content?.[0]?.text ?? '';
+
+    return {
+      text,
+      model,
+      tokenCount: (data.usage?.input_tokens ?? 0) + (data.usage?.output_tokens ?? 0),
+    };
   }
 
   private async callApi(endpoint: string, body: unknown): Promise<any> {

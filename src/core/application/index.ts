@@ -42,3 +42,13 @@ export type {
   EmbeddingServiceConfig,
   ProgressCallback,
 } from './services/embedding-service.js';
+
+export { ConnectionReasonService } from './services/connection-reason-service.js';
+export type { ConnectionReasonResult } from './services/connection-reason-service.js';
+
+// Use Cases - AddConnection
+export { AddConnectionUseCase } from './use-cases/add-connection.js';
+export type {
+  AddConnectionRequest,
+  AddConnectionResponse,
+} from './use-cases/add-connection.js';

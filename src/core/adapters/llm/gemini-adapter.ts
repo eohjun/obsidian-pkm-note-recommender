@@ -12,6 +12,8 @@ import type {
   EmbeddingResponse,
   BatchEmbeddingRequest,
   BatchEmbeddingResponse,
+  TextCompletionRequest,
+  TextCompletionResponse,
 } from '../../domain/interfaces/llm-provider.interface.js';
 
 const GEMINI_MODELS = {
@@ -97,6 +99,45 @@ export class GeminiAdapter implements ILLMProvider {
     } catch {
       return false;
     }
+  }
+
+  async generateCompletion(request: TextCompletionRequest): Promise<TextCompletionResponse> {
+    const model = 'gemini-1.5-flash'; // Use efficient model for classifications
+    const url = `${this.baseUrl}/models/${model}:generateContent?key=${this.apiKey}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [{ text: request.prompt }],
+          },
+        ],
+        generationConfig: {
+          maxOutputTokens: request.maxTokens ?? 200,
+          temperature: request.temperature ?? 0.3,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(
+        `Gemini API error: ${response.status} - ${error.error?.message ?? response.statusText}`
+      );
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+
+    return {
+      text,
+      model,
+      tokenCount: data.usageMetadata?.totalTokenCount ?? 0,
+    };
   }
 
   private async callApi(model: string, body: unknown): Promise<any> {

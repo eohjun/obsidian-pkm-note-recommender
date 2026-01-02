@@ -8,6 +8,8 @@ import { Plugin, Notice, type WorkspaceLeaf } from 'obsidian';
 import { RecommendNotesUseCase } from './core/application/use-cases/recommend-notes.js';
 import { GetNoteContextUseCase } from './core/application/use-cases/get-note-context.js';
 import { EmbeddingService } from './core/application/services/embedding-service.js';
+import { ConnectionReasonService } from './core/application/services/connection-reason-service.js';
+import { AddConnectionUseCase } from './core/application/use-cases/add-connection.js';
 import {
   VaultAdapter,
   CommandAdapter,
@@ -29,6 +31,8 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
   private getNoteContextUseCase!: GetNoteContextUseCase;
   private embeddingService: EmbeddingService | null = null;
   private embeddingStore: LocalEmbeddingStore | null = null;
+  private connectionReasonService!: ConnectionReasonService;
+  private addConnectionUseCase: AddConnectionUseCase | null = null;
   private statusBarItem: HTMLElement | null = null;
 
   async onload(): Promise<void> {
@@ -38,6 +42,7 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
     this.initializeAdapters();
     this.initializeUseCases();
     await this.initializeEmbeddingService();
+    await this.initializeConnectionServices();
 
     this.registerView(
       VIEW_TYPE_RECOMMENDATIONS,
@@ -46,6 +51,8 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
         this.recommendNotesUseCase,
         this.settings,
         (status) => this.updateStatusBar(status),
+        this.connectionReasonService,
+        this.addConnectionUseCase,
       ),
     );
 
@@ -64,6 +71,11 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
 
   async onunload(): Promise<void> {
     console.info('Unloading PKM Note Recommender plugin');
+
+    // Save connection reason cache before unload
+    if (this.connectionReasonService) {
+      await this.connectionReasonService.saveCache(this);
+    }
   }
 
   private async initializeSettings(): Promise<void> {
@@ -152,6 +164,28 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
     }
   }
 
+  private async initializeConnectionServices(): Promise<void> {
+    // Initialize ConnectionReasonService (always create, but provider may be null)
+    this.connectionReasonService = new ConnectionReasonService();
+    await this.connectionReasonService.loadCache(this);
+
+    // Set LLM provider if configured
+    const apiKey = this.getApiKeyForProvider();
+    if (apiKey && this.settings.useSemanticSimilarity) {
+      try {
+        const provider = createLLMProvider(this.settings.llm.provider, { apiKey });
+        this.connectionReasonService.setProvider(provider);
+        console.info('ConnectionReasonService initialized with LLM provider');
+      } catch (error) {
+        console.error('Failed to initialize ConnectionReasonService LLM provider:', error);
+      }
+    }
+
+    // Initialize AddConnectionUseCase
+    this.addConnectionUseCase = new AddConnectionUseCase(this.app);
+    console.info('AddConnectionUseCase initialized');
+  }
+
   private getApiKeyForProvider(): string {
     switch (this.settings.llm.provider) {
       case 'openai':
@@ -172,6 +206,20 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
     this.embeddingService = null;
     this.recommendNotesUseCase.setEmbeddingService(null);
     await this.initializeEmbeddingService();
+
+    // Also reinitialize connection reason service's LLM provider
+    const apiKey = this.getApiKeyForProvider();
+    if (apiKey && this.settings.useSemanticSimilarity) {
+      try {
+        const provider = createLLMProvider(this.settings.llm.provider, { apiKey });
+        this.connectionReasonService.setProvider(provider);
+      } catch (error) {
+        console.error('Failed to reinitialize ConnectionReasonService LLM provider:', error);
+        this.connectionReasonService.setProvider(null);
+      }
+    } else {
+      this.connectionReasonService.setProvider(null);
+    }
   }
 
   private registerCommands(): void {
