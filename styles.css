@@ -102,17 +102,17 @@
 }
 
 .pkm-score-high {
-  background-color: var(--background-modifier-success);
+  background-color: var(--color-green);
   color: var(--text-on-accent);
 }
 
 .pkm-score-medium {
-  background-color: var(--background-modifier-warning);
-  color: var(--text-on-accent);
+  background-color: var(--color-yellow);
+  color: var(--background-primary);
 }
 
 .pkm-score-low {
-  background-color: var(--background-modifier-border);
+  background-color: var(--color-base-50, var(--background-modifier-border));
   color: var(--text-muted);
 }
 
