@@ -1,8 +1,8 @@
 {
   "name": "obsidian-pkm-note-recommender",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "description": "Obsidian plugin for PKM note recommendations based on tags and connections",
+  "description": "Obsidian plugin for AI-powered semantic note recommendations with OpenAI, Gemini, and Anthropic support",
   "main": "dist/main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
