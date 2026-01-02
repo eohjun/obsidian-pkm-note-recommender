@@ -21,8 +21,10 @@ export {
   SettingsAdapter,
   PKMSettingTab,
   DEFAULT_SETTINGS,
+  DEFAULT_LLM_SETTINGS,
 } from './settings-adapter.js';
 export type {
   PKMPluginSettings,
+  LLMSettings,
   ISettingsAdapter,
 } from './settings-adapter.js';

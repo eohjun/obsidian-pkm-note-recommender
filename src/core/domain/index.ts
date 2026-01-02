@@ -24,6 +24,8 @@ export {
 } from './value-objects/recommendation-result.js';
 export type { RecommendationResultProps } from './value-objects/recommendation-result.js';
 
+export { Embedding, cosineSimilarity } from './value-objects/embedding.js';
+
 // Interfaces (Ports)
 export type {
   INoteRepository,
@@ -53,3 +55,19 @@ export type {
   BatchRecommendationRequest,
   BatchRecommendationResponse,
 } from './interfaces/recommendation-service.interface.js';
+
+export type {
+  ILLMProvider,
+  LLMProviderType,
+  LLMProviderConfig,
+  EmbeddingRequest,
+  EmbeddingResponse,
+  BatchEmbeddingRequest,
+  BatchEmbeddingResponse,
+} from './interfaces/llm-provider.interface.js';
+
+export type {
+  IEmbeddingStore,
+  StoredEmbedding,
+  SimilarityResult,
+} from './interfaces/embedding-store.interface.js';

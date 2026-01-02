@@ -6,7 +6,7 @@
  * to provide note recommendations based on:
  * - Shared tags
  * - Graph connections
- * - Content similarity
+ * - Semantic similarity (via embeddings)
  *
  * Clean Architecture:
  * - Depends only on domain layer (entities, interfaces)
@@ -16,12 +16,15 @@
 import type { Note } from '../../domain/entities/note.js';
 import type { INoteRepository } from '../../domain/interfaces/note-repository.interface.js';
 import type { IGraphRepository } from '../../domain/interfaces/graph-repository.interface.js';
+import type { EmbeddingService } from '../services/embedding-service.js';
 
 // Request DTO
 export interface RecommendNotesRequest {
   sourceNoteId: string;
   maxResults?: number;
   useGraphConnections?: boolean;
+  useSemanticSimilarity?: boolean;
+  semanticThreshold?: number;
   minScore?: number;
 }
 
@@ -46,13 +49,29 @@ export interface RecommendNotesResponse {
  * Use case for recommending related notes based on various strategies
  */
 export class RecommendNotesUseCase {
+  private embeddingService: EmbeddingService | null = null;
+
   constructor(
     private readonly noteRepository: INoteRepository,
     private readonly graphRepository: IGraphRepository,
   ) {}
 
+  /**
+   * Set the embedding service for semantic similarity
+   */
+  setEmbeddingService(service: EmbeddingService | null): void {
+    this.embeddingService = service;
+  }
+
   async execute(request: RecommendNotesRequest): Promise<RecommendNotesResponse> {
-    const { sourceNoteId, maxResults = 10, useGraphConnections = false, minScore = 0 } = request;
+    const {
+      sourceNoteId,
+      maxResults = 10,
+      useGraphConnections = false,
+      useSemanticSimilarity = false,
+      semanticThreshold = 0.5,
+      minScore = 0,
+    } = request;
 
     // Find source note
     const sourceNote = await this.noteRepository.findById(sourceNoteId);
@@ -74,6 +93,16 @@ export class RecommendNotesUseCase {
     // Strategy 2: Graph-based recommendations (if enabled)
     if (useGraphConnections) {
       await this.addGraphBasedRecommendations(sourceNote, recommendations);
+    }
+
+    // Strategy 3: Semantic similarity (if enabled and service available)
+    if (useSemanticSimilarity && this.embeddingService?.isReady()) {
+      await this.addSemanticRecommendations(
+        sourceNote,
+        recommendations,
+        semanticThreshold,
+        maxResults,
+      );
     }
 
     // Convert to array and sort by score
@@ -153,6 +182,53 @@ export class RecommendNotesUseCase {
           reasons: ['Direct link in knowledge graph'],
         });
       }
+    }
+  }
+
+  private async addSemanticRecommendations(
+    sourceNote: Note,
+    recommendations: Map<string, RecommendationItem>,
+    threshold: number,
+    limit: number,
+  ): Promise<void> {
+    if (!this.embeddingService) return;
+
+    try {
+      const similarNotes = await this.embeddingService.findSimilarNotes(sourceNote.id, {
+        limit,
+        threshold,
+      });
+
+      for (const result of similarNotes) {
+        if (result.noteId === sourceNote.id) continue;
+
+        const note = await this.noteRepository.findById(result.noteId);
+        if (!note) continue;
+
+        const semanticScore = result.similarity;
+        const similarityPercent = Math.round(semanticScore * 100);
+
+        const existing = recommendations.get(note.id);
+        if (existing) {
+          // Boost score when semantic similarity confirms other signals
+          const boostedScore = Math.min(1, existing.score + semanticScore * 0.3);
+          existing.score = Math.max(existing.score, boostedScore);
+          if (!existing.reasons.some((r) => r.includes('Semantic'))) {
+            existing.reasons.push(`Semantic similarity: ${similarityPercent}%`);
+          }
+        } else {
+          recommendations.set(note.id, {
+            noteId: note.id,
+            title: note.title,
+            filePath: note.filePath,
+            score: semanticScore,
+            reasons: [`Semantic similarity: ${similarityPercent}%`],
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Semantic recommendation failed:', error);
+      // Fail gracefully - other strategies still work
     }
   }
 }

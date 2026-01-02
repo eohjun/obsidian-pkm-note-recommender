@@ -95,6 +95,9 @@ export class RecommendationView extends ItemView {
         sourceNoteId: noteId,
         maxResults: this.settings.maxRecommendations,
         useGraphConnections: this.settings.useGraphConnections,
+        useSemanticSimilarity: this.settings.useSemanticSimilarity,
+        semanticThreshold: this.settings.llm.semanticThreshold,
+        minScore: this.settings.minScore,
       });
 
       contentEl.empty();

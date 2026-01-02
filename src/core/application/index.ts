@@ -35,3 +35,10 @@ export type {
   NoteStructure,
   GraphConnection,
 } from './use-cases/get-note-context.js';
+
+// Services
+export { EmbeddingService } from './services/embedding-service.js';
+export type {
+  EmbeddingServiceConfig,
+  ProgressCallback,
+} from './services/embedding-service.js';

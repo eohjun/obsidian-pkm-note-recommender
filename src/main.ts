@@ -1,12 +1,13 @@
 /**
  * PKM Note Recommender - Obsidian Plugin
  *
- * Provides note recommendations based on tags and graph connections.
+ * Provides note recommendations based on tags, graph connections, and semantic similarity.
  */
 
-import { Plugin, type WorkspaceLeaf } from 'obsidian';
+import { Plugin, Notice, type WorkspaceLeaf } from 'obsidian';
 import { RecommendNotesUseCase } from './core/application/use-cases/recommend-notes.js';
 import { GetNoteContextUseCase } from './core/application/use-cases/get-note-context.js';
+import { EmbeddingService } from './core/application/services/embedding-service.js';
 import {
   VaultAdapter,
   CommandAdapter,
@@ -14,6 +15,8 @@ import {
   PKMSettingTab,
   type PKMPluginSettings,
 } from './core/adapters/obsidian/index.js';
+import { LocalEmbeddingStore } from './core/adapters/storage/local-embedding-store.js';
+import { createLLMProvider } from './core/adapters/llm/index.js';
 import { RecommendationView, VIEW_TYPE_RECOMMENDATIONS } from './views/recommendation-view.js';
 
 export default class PKMNoteRecommenderPlugin extends Plugin {
@@ -24,6 +27,8 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
   private settingsAdapter!: SettingsAdapter;
   private recommendNotesUseCase!: RecommendNotesUseCase;
   private getNoteContextUseCase!: GetNoteContextUseCase;
+  private embeddingService: EmbeddingService | null = null;
+  private embeddingStore: LocalEmbeddingStore | null = null;
   private statusBarItem: HTMLElement | null = null;
 
   async onload(): Promise<void> {
@@ -32,6 +37,7 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
     await this.initializeSettings();
     this.initializeAdapters();
     this.initializeUseCases();
+    await this.initializeEmbeddingService();
 
     this.registerView(
       VIEW_TYPE_RECOMMENDATIONS,
@@ -105,6 +111,69 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
     );
   }
 
+  private async initializeEmbeddingService(): Promise<void> {
+    if (!this.settings.useSemanticSimilarity) {
+      console.info('Semantic similarity disabled, skipping embedding service initialization');
+      return;
+    }
+
+    const llmSettings = this.settings.llm;
+    const apiKey = this.getApiKeyForProvider();
+
+    if (!apiKey) {
+      console.info('No API key configured for LLM provider');
+      return;
+    }
+
+    try {
+      const provider = createLLMProvider(llmSettings.provider, { apiKey });
+
+      this.embeddingStore = new LocalEmbeddingStore(this);
+      await this.embeddingStore.initialize();
+
+      this.embeddingService = new EmbeddingService(
+        provider,
+        this.embeddingStore,
+        this.vaultAdapter,
+        {
+          batchSize: 20,
+          similarityThreshold: llmSettings.semanticThreshold,
+          maxRecommendations: this.settings.maxRecommendations,
+          autoEmbed: llmSettings.autoEmbed,
+        },
+      );
+
+      // Connect embedding service to use case
+      this.recommendNotesUseCase.setEmbeddingService(this.embeddingService);
+
+      console.info(`Embedding service initialized with ${llmSettings.provider} provider`);
+    } catch (error) {
+      console.error('Failed to initialize embedding service:', error);
+    }
+  }
+
+  private getApiKeyForProvider(): string {
+    switch (this.settings.llm.provider) {
+      case 'openai':
+        return this.settings.llm.openaiApiKey;
+      case 'gemini':
+        return this.settings.llm.geminiApiKey;
+      case 'anthropic':
+        return this.settings.llm.anthropicApiKey;
+      default:
+        return '';
+    }
+  }
+
+  /**
+   * Reinitialize embedding service when settings change
+   */
+  async reinitializeEmbeddingService(): Promise<void> {
+    this.embeddingService = null;
+    this.recommendNotesUseCase.setEmbeddingService(null);
+    await this.initializeEmbeddingService();
+  }
+
   private registerCommands(): void {
     this.addCommand({
       id: 'pkm-show-recommendations',
@@ -117,6 +186,129 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
       name: 'Refresh note recommendations',
       callback: () => { this.refreshRecommendations(); },
     });
+
+    this.addCommand({
+      id: 'pkm-embed-all-notes',
+      name: 'Generate embeddings for all notes',
+      callback: () => { void this.embedAllNotes(); },
+    });
+
+    this.addCommand({
+      id: 'pkm-embed-current-note',
+      name: 'Generate embedding for current note',
+      callback: () => { void this.embedCurrentNote(); },
+    });
+
+    this.addCommand({
+      id: 'pkm-clear-embeddings',
+      name: 'Clear all embeddings',
+      callback: () => { void this.clearEmbeddings(); },
+    });
+
+    this.addCommand({
+      id: 'pkm-embedding-stats',
+      name: 'Show embedding statistics',
+      callback: () => { void this.showEmbeddingStats(); },
+    });
+  }
+
+  private async embedAllNotes(): Promise<void> {
+    if (!this.embeddingService) {
+      new Notice('Embedding service not configured. Please set up API key in settings.');
+      return;
+    }
+
+    new Notice('Starting to generate embeddings for all notes...');
+
+    try {
+      const result = await this.embeddingService.embedAllNotes((current, total, _message) => {
+        this.updateStatusBar(current); // Show progress count
+      });
+
+      new Notice(
+        `Embeddings complete!\n` +
+        `Total: ${result.total}\n` +
+        `Embedded: ${result.embedded}\n` +
+        `Skipped: ${result.skipped}\n` +
+        `Errors: ${result.errors}`,
+      );
+      this.updateStatusBar('ready');
+    } catch (error) {
+      console.error('Failed to embed notes:', error);
+      new Notice(`Failed to generate embeddings: ${(error as Error).message}`);
+      this.updateStatusBar('error');
+    }
+  }
+
+  private async embedCurrentNote(): Promise<void> {
+    if (!this.embeddingService) {
+      new Notice('Embedding service not configured. Please set up API key in settings.');
+      return;
+    }
+
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) {
+      new Notice('No note is currently open.');
+      return;
+    }
+
+    if (!this.isValidNoteFile(activeFile.path)) {
+      new Notice('Current file is not a Zettelkasten note.');
+      return;
+    }
+
+    const noteId = activeFile.basename.match(/^(\d{12})/)?.[1];
+    if (!noteId) {
+      new Notice('Could not extract note ID from filename.');
+      return;
+    }
+
+    new Notice('Generating embedding for current note...');
+
+    try {
+      const content = await this.app.vault.cachedRead(activeFile);
+      await this.embeddingService.embedNote(noteId, content, activeFile.path);
+      new Notice('Embedding generated successfully!');
+    } catch (error) {
+      console.error('Failed to embed note:', error);
+      new Notice(`Failed to generate embedding: ${(error as Error).message}`);
+    }
+  }
+
+  private async clearEmbeddings(): Promise<void> {
+    if (!this.embeddingService) {
+      new Notice('Embedding service not configured.');
+      return;
+    }
+
+    try {
+      await this.embeddingService.clearAllEmbeddings();
+      new Notice('All embeddings have been cleared.');
+    } catch (error) {
+      console.error('Failed to clear embeddings:', error);
+      new Notice(`Failed to clear embeddings: ${(error as Error).message}`);
+    }
+  }
+
+  private async showEmbeddingStats(): Promise<void> {
+    if (!this.embeddingService) {
+      new Notice('Embedding service not configured. Please set up API key in settings.');
+      return;
+    }
+
+    try {
+      const stats = await this.embeddingService.getStats();
+      new Notice(
+        `Embedding Statistics:\n` +
+        `Provider: ${stats.provider}\n` +
+        `Model: ${stats.model}\n` +
+        `Total embeddings: ${stats.totalEmbeddings}\n` +
+        `Storage size: ${(stats.storageSize / 1024).toFixed(1)}KB`,
+      );
+    } catch (error) {
+      console.error('Failed to get embedding stats:', error);
+      new Notice(`Failed to get stats: ${(error as Error).message}`);
+    }
   }
 
   private registerEventHandlers(): void {
@@ -128,6 +320,39 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
           }
         }),
       );
+    }
+
+    // Auto-embed notes when modified (if enabled)
+    if (this.settings.llm.autoEmbed) {
+      this.registerEvent(
+        this.app.vault.on('modify', (file) => {
+          if (this.isValidNoteFile(file.path) && this.embeddingService) {
+            void this.autoEmbedNote(file.path);
+          }
+        }),
+      );
+    }
+  }
+
+  private async autoEmbedNote(filePath: string): Promise<void> {
+    if (!this.embeddingService) return;
+
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (!file || !('basename' in file)) return;
+
+    const noteId = (file as { basename: string }).basename.match(/^(\d{12})/)?.[1];
+    if (!noteId) return;
+
+    try {
+      const content = await this.app.vault.cachedRead(file as import('obsidian').TFile);
+      await this.embeddingService.embedNote(noteId, content, filePath);
+      if (this.settings.debugMode) {
+        console.debug(`Auto-embedded note: ${noteId}`);
+      }
+    } catch (error) {
+      if (this.settings.debugMode) {
+        console.error(`Failed to auto-embed note ${noteId}:`, error);
+      }
     }
   }
 
