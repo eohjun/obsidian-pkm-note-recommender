@@ -370,8 +370,15 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
       );
     }
 
-    // Auto-embed notes when modified (if enabled)
+    // Auto-embed notes when created or modified (if enabled)
     if (this.settings.llm.autoEmbed) {
+      this.registerEvent(
+        this.app.vault.on('create', (file) => {
+          if (this.isValidNoteFile(file.path) && this.embeddingService) {
+            void this.autoEmbedNote(file.path);
+          }
+        }),
+      );
       this.registerEvent(
         this.app.vault.on('modify', (file) => {
           if (this.isValidNoteFile(file.path) && this.embeddingService) {
