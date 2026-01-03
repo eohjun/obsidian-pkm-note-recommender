@@ -1,11 +1,11 @@
 /**
  * OpenAI Adapter
  *
- * Implements ILLMProvider for OpenAI's embedding API.
+ * Implements ILLMProvider for OpenAI's embedding and completion APIs.
+ * Extends BaseProvider for common functionality.
  */
 
 import type {
-  ILLMProvider,
   LLMProviderType,
   LLMProviderConfig,
   EmbeddingRequest,
@@ -15,7 +15,11 @@ import type {
   TextCompletionRequest,
   TextCompletionResponse,
 } from '../../domain/interfaces/llm-provider.interface.js';
+import { BaseProvider } from './base-provider.js';
 
+/**
+ * OpenAI model configurations
+ */
 const OPENAI_MODELS = {
   'text-embedding-3-small': { dimensions: 1536, maxTokens: 8191 },
   'text-embedding-3-large': { dimensions: 3072, maxTokens: 8191 },
@@ -26,29 +30,63 @@ const DEFAULT_MODEL = 'text-embedding-3-small';
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 
 /**
+ * OpenAI API response types
+ */
+interface OpenAIEmbeddingResponse {
+  data: Array<{
+    embedding: number[];
+    index: number;
+  }>;
+  model: string;
+  usage?: {
+    prompt_tokens: number;
+    total_tokens: number;
+  };
+}
+
+interface OpenAIChatResponse {
+  choices: Array<{
+    message: {
+      content: string;
+    };
+  }>;
+  model: string;
+  usage?: {
+    total_tokens: number;
+  };
+}
+
+/**
  * OpenAI LLM Provider Adapter
  */
-export class OpenAIAdapter implements ILLMProvider {
+export class OpenAIAdapter extends BaseProvider {
   readonly providerType: LLMProviderType = 'openai';
 
-  private readonly apiKey: string;
-  private readonly baseUrl: string;
-  private readonly defaultModel: string;
-
   constructor(config: LLMProviderConfig) {
-    this.apiKey = config.apiKey;
-    this.baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
-    this.defaultModel = config.defaultModel ?? DEFAULT_MODEL;
+    super(config, DEFAULT_BASE_URL, DEFAULT_MODEL);
   }
 
   isConfigured(): boolean {
     return Boolean(this.apiKey && this.apiKey.startsWith('sk-'));
   }
 
+  getAvailableModels(): string[] {
+    return Object.keys(OPENAI_MODELS);
+  }
+
+  async validateApiKey(): Promise<boolean> {
+    try {
+      await this.makeRequestNoRetry('/models', null, 'GET');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async generateEmbedding(request: EmbeddingRequest): Promise<EmbeddingResponse> {
     const model = request.model ?? this.defaultModel;
 
-    const response = await this.callApi('/embeddings', {
+    const response = await this.makeRequest<OpenAIEmbeddingResponse>('/embeddings', {
       model,
       input: request.text,
     });
@@ -56,57 +94,38 @@ export class OpenAIAdapter implements ILLMProvider {
     return {
       embedding: response.data[0].embedding,
       model,
-      tokenCount: response.usage?.total_tokens ?? 0,
+      tokenCount: response.usage?.total_tokens ?? this.estimateTokens(request.text),
     };
   }
 
   async generateEmbeddings(request: BatchEmbeddingRequest): Promise<BatchEmbeddingResponse> {
     const model = request.model ?? this.defaultModel;
 
-    const response = await this.callApi('/embeddings', {
+    const response = await this.makeRequest<OpenAIEmbeddingResponse>('/embeddings', {
       model,
       input: request.texts,
     });
 
     // Sort by index to ensure correct order
-    const sortedData = response.data.sort(
-      (a: { index: number }, b: { index: number }) => a.index - b.index
-    );
+    const sortedData = [...response.data].sort((a, b) => a.index - b.index);
 
     return {
-      embeddings: sortedData.map((d: { embedding: number[] }) => d.embedding),
+      embeddings: sortedData.map((d) => d.embedding),
       model,
       totalTokens: response.usage?.total_tokens ?? 0,
     };
   }
 
-  getAvailableModels(): string[] {
-    return Object.keys(OPENAI_MODELS);
-  }
-
-  getDefaultModel(): string {
-    return this.defaultModel;
-  }
-
-  async validateApiKey(): Promise<boolean> {
-    try {
-      // Make a minimal API call to validate the key
-      await this.callApi('/models', null, 'GET');
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   async generateCompletion(request: TextCompletionRequest): Promise<TextCompletionResponse> {
-    const model = 'gpt-4o-mini'; // Use efficient model for classifications
+    const model = 'gpt-4o-mini';
 
-    const response = await this.callApi('/chat/completions', {
+    const response = await this.makeRequest<OpenAIChatResponse>('/chat/completions', {
       model,
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful assistant that analyzes note connections in a PKM system. Always respond in JSON format when requested.',
+          content:
+            'You are a helpful assistant that analyzes note connections in a PKM system. Always respond in JSON format when requested.',
         },
         { role: 'user', content: request.prompt },
       ],
@@ -121,34 +140,16 @@ export class OpenAIAdapter implements ILLMProvider {
     };
   }
 
-  private async callApi(
-    endpoint: string,
-    body: unknown,
-    method: 'GET' | 'POST' = 'POST'
-  ): Promise<any> {
-    const url = `${this.baseUrl}${endpoint}`;
-
-    const options: RequestInit = {
-      method,
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    };
-
-    if (body && method === 'POST') {
-      options.body = JSON.stringify(body);
+  protected extractErrorMessage(errorData: unknown, statusCode: number): string {
+    if (typeof errorData === 'object' && errorData !== null) {
+      const data = errorData as Record<string, unknown>;
+      if (typeof data.error === 'object' && data.error !== null) {
+        const error = data.error as Record<string, unknown>;
+        if (typeof error.message === 'string') {
+          return `OpenAI API error: ${statusCode} - ${error.message}`;
+        }
+      }
     }
-
-    const response = await fetch(url, options);
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(
-        `OpenAI API error: ${response.status} - ${error.error?.message ?? response.statusText}`
-      );
-    }
-
-    return response.json();
+    return `OpenAI API error: ${statusCode}`;
   }
 }

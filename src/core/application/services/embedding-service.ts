@@ -13,6 +13,7 @@ import type {
 } from '../../domain/interfaces/embedding-store.interface.js';
 import type { INoteRepository } from '../../domain/interfaces/note-repository.interface.js';
 import { createHash } from 'crypto';
+import { processBatches } from './retry-service.js';
 
 /**
  * Embedding service configuration
@@ -118,9 +119,12 @@ export class EmbeddingService {
   }
 
   /**
-   * Embed all notes in batch
+   * Embed all notes in batch with rate limit handling
    */
-  async embedAllNotes(onProgress?: ProgressCallback): Promise<{
+  async embedAllNotes(
+    onProgress?: ProgressCallback,
+    options?: { signal?: AbortSignal }
+  ): Promise<{
     total: number;
     embedded: number;
     skipped: number;
@@ -132,86 +136,102 @@ export class EmbeddingService {
 
     const notes = await this.noteRepository.findAll();
     const total = notes.length;
-    let embedded = 0;
     let skipped = 0;
-    let errors = 0;
 
-    // Process in batches
-    for (let i = 0; i < notes.length; i += this.config.batchSize) {
-      const batch = notes.slice(i, i + this.config.batchSize);
-      const notesToEmbed: Array<{
-        noteId: string;
-        notePath: string;
-        content: string;
-        contentHash: string;
-      }> = [];
+    // Prepare notes that need embedding
+    const notesToEmbed: Array<{
+      noteId: string;
+      notePath: string;
+      content: string;
+      contentHash: string;
+    }> = [];
 
-      // Filter out notes that don't need embedding
-      for (const note of batch) {
-        const content = note.content;
-        if (!content) {
-          skipped++;
-          continue;
-        }
-
-        const contentHash = this.hashContent(content);
-        const isStale = await this.store.isStale(note.id, contentHash);
-
-        if (isStale) {
-          notesToEmbed.push({
-            noteId: note.id,
-            notePath: note.filePath,
-            content,
-            contentHash,
-          });
-        } else {
-          skipped++;
-        }
-      }
-
-      if (notesToEmbed.length === 0) {
+    for (const note of notes) {
+      const content = note.content;
+      if (!content) {
+        skipped++;
         continue;
       }
 
-      try {
-        // Generate embeddings in batch
-        const response = await this.provider.generateEmbeddings({
-          texts: notesToEmbed.map((n) => this.prepareTextForEmbedding(n.content)),
+      const contentHash = this.hashContent(content);
+      const isStale = await this.store.isStale(note.id, contentHash);
+
+      if (isStale) {
+        notesToEmbed.push({
+          noteId: note.id,
+          notePath: note.filePath,
+          content,
+          contentHash,
         });
-
-        // Store embeddings
-        const storedEmbeddings: StoredEmbedding[] = notesToEmbed.map(
-          (note, index) => ({
-            noteId: note.noteId,
-            notePath: note.notePath,
-            embedding: response.embeddings[index],
-            model: response.model,
-            provider: this.provider.providerType,
-            createdAt: new Date(),
-            contentHash: note.contentHash,
-          })
-        );
-
-        await this.store.saveBatch(storedEmbeddings);
-        embedded += notesToEmbed.length;
-      } catch (error) {
-        console.error('Failed to embed batch:', error);
-        errors += notesToEmbed.length;
-      }
-
-      // Report progress
-      if (onProgress) {
-        onProgress(
-          Math.min(i + this.config.batchSize, total),
-          total,
-          `Embedded ${embedded} notes...`
-        );
+      } else {
+        skipped++;
       }
     }
 
+    if (notesToEmbed.length === 0) {
+      return { total, embedded: 0, skipped, errors: 0 };
+    }
+
+    // Use processBatches for rate-limit aware batch processing
+    const result = await processBatches<
+      (typeof notesToEmbed)[0],
+      StoredEmbedding[]
+    >({
+      items: notesToEmbed,
+      batchSize: this.config.batchSize,
+      processFn: async (batch: typeof notesToEmbed): Promise<StoredEmbedding[]> => {
+        // Generate embeddings in batch
+        const response = await this.provider.generateEmbeddings({
+          texts: batch.map((n) => this.prepareTextForEmbedding(n.content)),
+        });
+
+        // Create stored embeddings
+        const storedEmbeddings: StoredEmbedding[] = batch.map((note, index) => ({
+          noteId: note.noteId,
+          notePath: note.notePath,
+          embedding: response.embeddings[index],
+          model: response.model,
+          provider: this.provider.providerType,
+          createdAt: new Date(),
+          contentHash: note.contentHash,
+        }));
+
+        // Save to store
+        await this.store.saveBatch(storedEmbeddings);
+
+        return storedEmbeddings;
+      },
+      onProgress: onProgress
+        ? (processed: number, totalItems: number) => {
+            onProgress(
+              skipped + processed,
+              notes.length,
+              `Embedded ${processed} of ${totalItems} notes...`
+            );
+          }
+        : undefined,
+      signal: options?.signal,
+    });
+
     await this.store.flush();
 
-    return { total, embedded, skipped, errors };
+    // Log any errors
+    if (result.errors.length > 0) {
+      for (const err of result.errors) {
+        console.error(`Failed to embed batch [${err.batchIndex}]:`, err.error);
+      }
+    }
+
+    // Calculate actual counts from results
+    const embeddedCount = result.results.reduce((sum, batch) => sum + batch.length, 0);
+    const errorCount = notesToEmbed.length - embeddedCount;
+
+    return {
+      total,
+      embedded: embeddedCount,
+      skipped,
+      errors: errorCount,
+    };
   }
 
   /**

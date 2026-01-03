@@ -82,3 +82,14 @@ export type {
   StoredEmbedding,
   SimilarityResult,
 } from './interfaces/embedding-store.interface.js';
+
+// Errors
+export {
+  LLMError,
+  RateLimitError,
+  AuthenticationError,
+  TimeoutError,
+  ServiceUnavailableError,
+  InvalidRequestError,
+  normalizeError,
+} from './errors/index.js';

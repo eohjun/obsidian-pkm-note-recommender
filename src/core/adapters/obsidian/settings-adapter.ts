@@ -151,17 +151,11 @@ export class SettingsAdapter implements ISettingsAdapter {
  * PKMSettingTab - Obsidian Settings Tab UI
  *
  * Provides a user interface for configuring plugin settings.
+ * Organized into logical sections for better UX.
  */
 export class PKMSettingTab extends PluginSettingTab {
   private readonly settingsAdapter: ISettingsAdapter;
 
-  /**
-   * Create a new PKMSettingTab
-   *
-   * @param app - Obsidian App instance
-   * @param plugin - Obsidian Plugin instance
-   * @param settingsAdapter - Settings adapter for managing settings
-   */
   constructor(app: App, plugin: Plugin, settingsAdapter: ISettingsAdapter) {
     super(app, plugin);
     this.settingsAdapter = settingsAdapter;
@@ -175,11 +169,24 @@ export class PKMSettingTab extends PluginSettingTab {
     const settings = this.settingsAdapter.getSettings();
 
     containerEl.empty();
-
-    // Header
     containerEl.createEl('h2', { text: 'PKM Note Recommender Settings' });
 
-    // Folder Settings
+    // Build each section
+    this.buildGeneralSection(containerEl, settings);
+    this.buildRecommendationSection(containerEl, settings);
+    this.buildAlgorithmSection(containerEl, settings);
+    this.buildAIProviderSection(containerEl, settings);
+    this.buildDisplaySection(containerEl, settings);
+    this.buildAdvancedSection(containerEl, settings);
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Section: General
+  // ─────────────────────────────────────────────────────────────
+
+  private buildGeneralSection(containerEl: HTMLElement, settings: PKMPluginSettings): void {
+    this.createSectionHeader(containerEl, 'General', 'Basic plugin configuration');
+
     new Setting(containerEl)
       .setName('Zettelkasten folder')
       .setDesc('The folder containing your permanent notes (YYYYMMDDHHMM format)')
@@ -188,14 +195,17 @@ export class PKMSettingTab extends PluginSettingTab {
           .setPlaceholder('04_Zettelkasten')
           .setValue(settings.zettelkastenFolder)
           .onChange(async (value) => {
-            await this.settingsAdapter.updateSettings({
-              zettelkastenFolder: value,
-            });
+            await this.settingsAdapter.updateSettings({ zettelkastenFolder: value });
           }),
       );
+  }
 
-    // Recommendation Settings
-    containerEl.createEl('h3', { text: 'Recommendation Settings' });
+  // ─────────────────────────────────────────────────────────────
+  // Section: Recommendations
+  // ─────────────────────────────────────────────────────────────
+
+  private buildRecommendationSection(containerEl: HTMLElement, settings: PKMPluginSettings): void {
+    this.createSectionHeader(containerEl, 'Recommendation Settings', 'Control how recommendations are generated');
 
     new Setting(containerEl)
       .setName('Maximum recommendations')
@@ -207,9 +217,7 @@ export class PKMSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             const num = parseInt(value, 10);
             if (!isNaN(num) && num > 0) {
-              await this.settingsAdapter.updateSettings({
-                maxRecommendations: num,
-              });
+              await this.settingsAdapter.updateSettings({ maxRecommendations: num });
             }
           }),
       );
@@ -224,24 +232,25 @@ export class PKMSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             const num = parseInt(value, 10);
             if (!isNaN(num) && num >= 0 && num <= 100) {
-              await this.settingsAdapter.updateSettings({
-                minScore: num / 100,
-              });
+              await this.settingsAdapter.updateSettings({ minScore: num / 100 });
             }
           }),
       );
+  }
 
-    // Algorithm Settings
-    containerEl.createEl('h3', { text: 'Algorithm Settings' });
+  // ─────────────────────────────────────────────────────────────
+  // Section: Algorithm
+  // ─────────────────────────────────────────────────────────────
+
+  private buildAlgorithmSection(containerEl: HTMLElement, settings: PKMPluginSettings): void {
+    this.createSectionHeader(containerEl, 'Algorithm Settings', 'Configure recommendation algorithms');
 
     new Setting(containerEl)
       .setName('Use graph connections')
       .setDesc('Include linked notes in recommendations')
       .addToggle((toggle) =>
         toggle.setValue(settings.useGraphConnections).onChange(async (value) => {
-          await this.settingsAdapter.updateSettings({
-            useGraphConnections: value,
-          });
+          await this.settingsAdapter.updateSettings({ useGraphConnections: value });
         }),
       );
 
@@ -250,9 +259,7 @@ export class PKMSettingTab extends PluginSettingTab {
       .setDesc('Include notes with similar tags in recommendations')
       .addToggle((toggle) =>
         toggle.setValue(settings.useTagSimilarity).onChange(async (value) => {
-          await this.settingsAdapter.updateSettings({
-            useTagSimilarity: value,
-          });
+          await this.settingsAdapter.updateSettings({ useTagSimilarity: value });
         }),
       );
 
@@ -261,19 +268,19 @@ export class PKMSettingTab extends PluginSettingTab {
       .setDesc('Use AI embeddings to find semantically similar notes (requires API key)')
       .addToggle((toggle) =>
         toggle.setValue(settings.useSemanticSimilarity).onChange(async (value) => {
-          await this.settingsAdapter.updateSettings({
-            useSemanticSimilarity: value,
-          });
+          await this.settingsAdapter.updateSettings({ useSemanticSimilarity: value });
         }),
       );
+  }
 
-    // LLM Settings
-    containerEl.createEl('h3', { text: 'AI Provider Settings' });
-    containerEl.createEl('p', {
-      text: 'Configure your AI provider for semantic note recommendations.',
-      cls: 'setting-item-description',
-    });
+  // ─────────────────────────────────────────────────────────────
+  // Section: AI Provider
+  // ─────────────────────────────────────────────────────────────
 
+  private buildAIProviderSection(containerEl: HTMLElement, settings: PKMPluginSettings): void {
+    this.createSectionHeader(containerEl, 'AI Provider Settings', 'Configure your AI provider for semantic recommendations');
+
+    // Provider selection
     new Setting(containerEl)
       .setName('AI Provider')
       .setDesc('Select which AI provider to use for generating embeddings')
@@ -287,17 +294,16 @@ export class PKMSettingTab extends PluginSettingTab {
             await this.settingsAdapter.updateSettings({
               llm: { ...settings.llm, provider: value as LLMProviderType },
             });
-            this.display(); // Refresh to show relevant API key field
+            this.display();
           }),
       );
 
-    // Show API key field for selected provider
+    // API key for selected provider
     const providerInfo = LLM_PROVIDERS[settings.llm.provider];
     const apiKeyField = this.getApiKeyForProvider(settings);
-    const apiKeyName = `${providerInfo.name} API Key`;
 
     new Setting(containerEl)
-      .setName(apiKeyName)
+      .setName(`${providerInfo.name} API Key`)
       .setDesc(`Get your API key from: ${providerInfo.docsUrl}`)
       .addText((text) =>
         text
@@ -320,12 +326,10 @@ export class PKMSettingTab extends PluginSettingTab {
           }),
       )
       .addButton((button) =>
-        button.setButtonText('Test').onClick(async () => {
-          // Get fresh settings (not the stale snapshot from display())
-          await this.testApiKey();
-        }),
+        button.setButtonText('Test').onClick(() => this.testApiKey()),
       );
 
+    // Embedding options
     new Setting(containerEl)
       .setName('Auto-embed notes')
       .setDesc('Automatically generate embeddings when notes are created or modified')
@@ -353,21 +357,22 @@ export class PKMSettingTab extends PluginSettingTab {
             }
           }),
       );
+  }
 
-    // Display Settings
-    containerEl.createEl('h3', { text: 'Display Settings' });
+  // ─────────────────────────────────────────────────────────────
+  // Section: Display
+  // ─────────────────────────────────────────────────────────────
+
+  private buildDisplaySection(containerEl: HTMLElement, settings: PKMPluginSettings): void {
+    this.createSectionHeader(containerEl, 'Display Settings', 'Configure how recommendations are shown');
 
     new Setting(containerEl)
       .setName('Auto-show recommendations')
       .setDesc('Automatically show recommendations when opening a note')
       .addToggle((toggle) =>
-        toggle
-          .setValue(settings.autoShowRecommendations)
-          .onChange(async (value) => {
-            await this.settingsAdapter.updateSettings({
-              autoShowRecommendations: value,
-            });
-          }),
+        toggle.setValue(settings.autoShowRecommendations).onChange(async (value) => {
+          await this.settingsAdapter.updateSettings({ autoShowRecommendations: value });
+        }),
       );
 
     new Setting(containerEl)
@@ -375,36 +380,53 @@ export class PKMSettingTab extends PluginSettingTab {
       .setDesc('Display recommendations in a sidebar panel')
       .addToggle((toggle) =>
         toggle.setValue(settings.showInSidebar).onChange(async (value) => {
-          await this.settingsAdapter.updateSettings({
-            showInSidebar: value,
-          });
+          await this.settingsAdapter.updateSettings({ showInSidebar: value });
         }),
       );
+  }
 
-    // Advanced Settings
-    containerEl.createEl('h3', { text: 'Advanced' });
+  // ─────────────────────────────────────────────────────────────
+  // Section: Advanced
+  // ─────────────────────────────────────────────────────────────
+
+  private buildAdvancedSection(containerEl: HTMLElement, settings: PKMPluginSettings): void {
+    this.createSectionHeader(containerEl, 'Advanced', 'Advanced options and debugging');
 
     new Setting(containerEl)
       .setName('Debug mode')
       .setDesc('Log additional debugging information to the console')
       .addToggle((toggle) =>
         toggle.setValue(settings.debugMode).onChange(async (value) => {
-          await this.settingsAdapter.updateSettings({
-            debugMode: value,
-          });
+          await this.settingsAdapter.updateSettings({ debugMode: value });
         }),
       );
 
-    // Reset Button
     new Setting(containerEl)
       .setName('Reset to defaults')
       .setDesc('Reset all settings to their default values')
       .addButton((button) =>
         button.setButtonText('Reset').onClick(async () => {
           await this.settingsAdapter.resetToDefaults();
-          this.display(); // Refresh the settings display
+          this.display();
         }),
       );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Helpers
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Create a section header with title and optional description
+   */
+  private createSectionHeader(containerEl: HTMLElement, title: string, description?: string): void {
+    containerEl.createEl('h3', { text: title });
+    if (description) {
+      containerEl.createEl('p', {
+        text: description,
+        cls: 'setting-item-description',
+      });
+    }
   }
 
   /**

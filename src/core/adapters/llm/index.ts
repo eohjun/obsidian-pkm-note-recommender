@@ -14,6 +14,9 @@ import { OpenAIAdapter } from './openai-adapter.js';
 import { GeminiAdapter } from './gemini-adapter.js';
 import { AnthropicAdapter } from './anthropic-adapter.js';
 
+// Export base class
+export { BaseProvider, LLM_RETRY_OPTIONS } from './base-provider.js';
+
 // Export adapters
 export { OpenAIAdapter } from './openai-adapter.js';
 export { GeminiAdapter } from './gemini-adapter.js';

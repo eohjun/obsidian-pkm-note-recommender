@@ -46,6 +46,23 @@ export type {
 export { ConnectionReasonService } from './services/connection-reason-service.js';
 export type { ConnectionReasonResult } from './services/connection-reason-service.js';
 
+// Retry Service
+export {
+  executeWithRetry,
+  withRetry,
+  processBatch,
+  processBatches,
+  isRetryableError,
+  DEFAULT_RETRY_OPTIONS,
+} from './services/retry-service.js';
+export type {
+  RetryOptions,
+  BatchOptions,
+  BatchResult,
+  BatchGroupOptions,
+  BatchGroupResult,
+} from './services/retry-service.js';
+
 // Use Cases - AddConnection
 export { AddConnectionUseCase } from './use-cases/add-connection.js';
 export type {
