@@ -6,7 +6,6 @@
  */
 
 import type { IEmbeddingStore, SimilarityResult } from '../../domain/interfaces/embedding-store.interface.js';
-import type { VaultEmbeddingsReader } from '../../adapters/storage/vault-embeddings-reader.js';
 
 export interface VaultEmbeddingServiceConfig {
   /** Minimum similarity threshold for recommendations */
@@ -48,7 +47,7 @@ export class VaultEmbeddingService {
   isReady(): boolean {
     // Check if the reader has embeddings loaded
     if ('isAvailable' in this.store) {
-      return (this.store as VaultEmbeddingsReader).isAvailable();
+      return (this.store as { isAvailable(): boolean }).isAvailable();
     }
     return true;
   }
@@ -76,33 +75,6 @@ export class VaultEmbeddingService {
   }
 
   /**
-   * Find similar notes by file path (more reliable across different plugins)
-   */
-  async findSimilarNotesByPath(
-    filePath: string,
-    options?: {
-      limit?: number;
-      threshold?: number;
-    }
-  ): Promise<SimilarityResult[]> {
-    // Use getByPath if available (VaultEmbeddingsReader)
-    let embedding = null;
-    if ('getByPath' in this.store) {
-      embedding = await (this.store as VaultEmbeddingsReader).getByPath(filePath);
-    }
-
-    if (!embedding) {
-      return [];
-    }
-
-    return this.store.findSimilar(embedding.embedding, {
-      limit: options?.limit ?? this.config.maxRecommendations,
-      threshold: options?.threshold ?? this.config.similarityThreshold,
-      excludeNoteIds: [embedding.noteId],
-    });
-  }
-
-  /**
    * Get embedding statistics
    */
   async getStats(): Promise<{
@@ -119,7 +91,7 @@ export class VaultEmbeddingService {
     let provider = 'vault-embeddings';
 
     if ('getSourceInfo' in this.store) {
-      const sourceInfo = (this.store as VaultEmbeddingsReader).getSourceInfo();
+      const sourceInfo = (this.store as { getSourceInfo(): { model: string; dimensions: number; provider: string } | null }).getSourceInfo();
       if (sourceInfo) {
         model = sourceInfo.model;
         provider = sourceInfo.provider;
@@ -138,7 +110,7 @@ export class VaultEmbeddingService {
    */
   async refresh(): Promise<void> {
     if ('refreshCache' in this.store) {
-      await (this.store as VaultEmbeddingsReader).refreshCache(true);
+      await (this.store as { refreshCache(force: boolean): Promise<void> }).refreshCache(true);
     }
   }
 }

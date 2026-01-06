@@ -5,7 +5,7 @@
  * This entity is pure business logic with no external dependencies.
  *
  * Invariants:
- * - id must be in YYYYMMDDHHMM format
+ * - id is a hash of the file path (compatible with Vault Embeddings)
  * - title and filePath are required
  * - tags are normalized (lowercase, trimmed, deduplicated)
  */
@@ -68,45 +68,6 @@ export class Note {
 
     if (!props.filePath) {
       throw new InvalidNoteError('Note filePath is required');
-    }
-
-    Note.validateIdFormat(props.id);
-  }
-
-  /**
-   * Validate ID format: YYYYMMDDHHMM (12 digits)
-   */
-  private static validateIdFormat(id: string): void {
-    // Must be exactly 12 digits
-    if (!/^\d{12}$/.test(id)) {
-      throw new InvalidNoteError(`Invalid Note ID format: ${id}. Must be YYYYMMDDHHMM (12 digits)`);
-    }
-
-    const year = parseInt(id.substring(0, 4), 10);
-    const month = parseInt(id.substring(4, 6), 10);
-    const day = parseInt(id.substring(6, 8), 10);
-    const hour = parseInt(id.substring(8, 10), 10);
-    const minute = parseInt(id.substring(10, 12), 10);
-
-    // Validate ranges
-    if (year < 1900 || year > 2100) {
-      throw new InvalidNoteError(`Invalid year in Note ID: ${year}`);
-    }
-
-    if (month < 1 || month > 12) {
-      throw new InvalidNoteError(`Invalid month in Note ID: ${month}`);
-    }
-
-    if (day < 1 || day > 31) {
-      throw new InvalidNoteError(`Invalid day in Note ID: ${day}`);
-    }
-
-    if (hour < 0 || hour > 23) {
-      throw new InvalidNoteError(`Invalid hour in Note ID: ${hour}`);
-    }
-
-    if (minute < 0 || minute > 59) {
-      throw new InvalidNoteError(`Invalid minute in Note ID: ${minute}`);
     }
   }
 

@@ -19,10 +19,27 @@ import type {
 } from '../../domain/interfaces/note-repository.interface.js';
 
 /**
- * Regular expression for extracting note ID from filename
- * Format: YYYYMMDDHHMM (12 digits at start of filename)
+ * Generate a hash-based note ID from file path
+ * Compatible with Vault Embeddings plugin
  */
-const NOTE_ID_REGEX = /^(\d{12})/;
+function generateNoteId(path: string): string {
+  const pathWithoutExt = path.replace(/\.md$/, '');
+  return simpleHash(pathWithoutExt);
+}
+
+/**
+ * Simple hash function for ID generation
+ * Must match Vault Embeddings implementation
+ */
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16).padStart(8, '0');
+}
 
 /**
  * VaultAdapter - Obsidian Vault Implementation of INoteRepository
@@ -196,16 +213,15 @@ export class VaultAdapter implements INoteRepository {
       .filter(
         (file) =>
           file.path.startsWith(this.basePath) && file.extension === 'md',
-      )
-      .filter((file) => NOTE_ID_REGEX.test(file.basename));
+      );
   }
 
   /**
-   * Find a file by note ID
+   * Find a file by note ID (hash-based)
    */
   private findFileById(id: string): TFile | null {
     const files = this.getNotesInFolder();
-    return files.find((file) => file.basename.startsWith(id)) ?? null;
+    return files.find((file) => generateNoteId(file.path) === id) ?? null;
   }
 
   /**
@@ -224,11 +240,7 @@ export class VaultAdapter implements INoteRepository {
    * Convert Obsidian TFile to domain Note entity
    */
   private async fileToNote(file: TFile): Promise<Note | null> {
-    const idMatch = file.basename.match(NOTE_ID_REGEX);
-    if (!idMatch) return null;
-
-    const id = idMatch[1];
-    const title = file.basename.replace(NOTE_ID_REGEX, '').trim();
+    const id = generateNoteId(file.path);
     const content = await this.app.vault.read(file);
     const metadata = this.app.metadataCache.getFileCache(file);
     const tags = this.extractTags(content, metadata);
@@ -236,7 +248,7 @@ export class VaultAdapter implements INoteRepository {
     try {
       return Note.create({
         id,
-        title: title || file.basename,
+        title: file.basename,
         filePath: file.path,
         content,
         tags,
@@ -244,7 +256,7 @@ export class VaultAdapter implements INoteRepository {
         updatedAt: new Date(file.stat.mtime),
       });
     } catch {
-      // If Note validation fails (e.g., invalid ID format), skip this file
+      // If Note validation fails, skip this file
       return null;
     }
   }
