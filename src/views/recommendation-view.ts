@@ -15,10 +15,9 @@ import type { ConnectionReasonService, ConnectionReasonResult } from '../core/ap
 import type { AddConnectionUseCase } from '../core/application/use-cases/add-connection.js';
 import type { PKMPluginSettings } from '../core/adapters/obsidian/index.js';
 import type { ConnectionClassificationType } from '../core/domain/value-objects/connection-classification.js';
+import { generateNoteId } from '../core/domain/utils/note-id.js';
 
 export const VIEW_TYPE_RECOMMENDATIONS = 'pkm-recommendations-view';
-
-const NOTE_ID_REGEX = /^(\d{12})/;
 
 export type StatusCallback = (status: 'ready' | 'loading' | 'error' | number) => void;
 
@@ -121,19 +120,13 @@ export class RecommendationView extends ItemView {
     }
 
     const noteId = this.extractNoteId(activeFile);
-    if (!noteId) {
-      this.showMessage(contentEl as HTMLElement, 'Current file is not a Zettelkasten note');
-      this.isLoading = false;
-      this.onStatusChange?.('ready');
-      return;
-    }
 
     // Store source note info
     try {
       const sourceContent = await this.app.vault.cachedRead(activeFile);
       this.state.sourceNoteId = noteId;
       this.state.sourceFilePath = activeFile.path;
-      this.state.sourceTitle = activeFile.basename.replace(/^\d{12}\s*/, '');
+      this.state.sourceTitle = activeFile.basename;
       this.state.sourceContent = sourceContent;
     } catch {
       this.showMessage(contentEl as HTMLElement, 'Failed to read current note');
@@ -191,9 +184,8 @@ export class RecommendationView extends ItemView {
     }
   }
 
-  private extractNoteId(file: TFile): string | undefined {
-    const match = file.basename.match(NOTE_ID_REGEX);
-    return match ? match[1] : undefined;
+  private extractNoteId(file: TFile): string {
+    return generateNoteId(file.path);
   }
 
   private showMessage(container: HTMLElement, message: string): void {

@@ -16,11 +16,7 @@ import type {
   CommandContext,
   ICommandRegistry,
 } from '../../domain/interfaces/plugin-command.interface.js';
-
-/**
- * Regular expression for extracting note ID from filename
- */
-const NOTE_ID_REGEX = /^(\d{12})/;
+import { generateNoteId } from '../../domain/utils/note-id.js';
 
 /**
  * CommandAdapter - Bridges domain commands to Obsidian command system
@@ -136,11 +132,10 @@ export class CommandAdapter implements ICommandRegistry {
   // Private helper methods
 
   /**
-   * Extract note ID from a file
+   * Extract note ID from a file (hash-based, compatible with Vault Embeddings)
    */
-  private extractNoteId(file: TFile): string | undefined {
-    const match = file.basename.match(NOTE_ID_REGEX);
-    return match ? match[1] : undefined;
+  private extractNoteId(file: TFile): string {
+    return generateNoteId(file.path);
   }
 
   /**
