@@ -62,12 +62,12 @@ export class AddConnectionUseCase {
       // Read current content
       const content = await this.app.vault.read(file);
 
-      // Format the new connection line
-      const linkText = `[[${targetNoteId} ${targetTitle}]]`;
+      // Format the new connection line (use title only, not hash ID)
+      const linkText = `[[${targetTitle}]]`;
       const newConnection = `- ${linkText} • ${classification} — ${reason}`;
 
-      // Check if link already exists
-      if (this.hasExistingLink(content, targetNoteId)) {
+      // Check if link already exists (by title, not by hash ID)
+      if (this.hasExistingLink(content, targetTitle)) {
         return {
           success: false,
           message: '이미 연결된 노트입니다.',
@@ -113,9 +113,11 @@ export class AddConnectionUseCase {
   /**
    * Check if a link to the target note already exists
    */
-  private hasExistingLink(content: string, targetNoteId: string): boolean {
-    // Match [[noteId ...]] pattern
-    const linkPattern = new RegExp(`\\[\\[${targetNoteId}[^\\]]*\\]\\]`);
+  private hasExistingLink(content: string, targetTitle: string): boolean {
+    // Match [[title]] or [[title|alias]] pattern
+    // Escape special regex characters in title
+    const escapedTitle = targetTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const linkPattern = new RegExp(`\\[\\[${escapedTitle}(\\|[^\\]]*)?\\]\\]`);
     return linkPattern.test(content);
   }
 
