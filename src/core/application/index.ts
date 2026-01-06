@@ -43,6 +43,9 @@ export type {
   ProgressCallback,
 } from './services/embedding-service.js';
 
+export { VaultEmbeddingService } from './services/vault-embedding-service.js';
+export type { VaultEmbeddingServiceConfig } from './services/vault-embedding-service.js';
+
 export { ConnectionReasonService } from './services/connection-reason-service.js';
 export type { ConnectionReasonResult } from './services/connection-reason-service.js';
 

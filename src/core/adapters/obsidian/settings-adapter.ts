@@ -16,6 +16,9 @@ import { LLM_PROVIDERS, validateApiKeyFormat } from '../llm/index.js';
 
 /**
  * LLM Provider settings
+ *
+ * Note: Embeddings are now handled by the Vault Embeddings plugin.
+ * API keys here are used only for ConnectionReasonService (generating reasons for connections).
  */
 export interface LLMSettings {
   /** Selected LLM provider */
@@ -26,8 +29,6 @@ export interface LLMSettings {
   geminiApiKey: string;
   /** Anthropic (Voyage AI) API key */
   anthropicApiKey: string;
-  /** Auto-embed notes when saved */
-  autoEmbed: boolean;
   /** Minimum similarity threshold for semantic recommendations */
   semanticThreshold: number;
 }
@@ -66,7 +67,6 @@ export const DEFAULT_LLM_SETTINGS: LLMSettings = {
   openaiApiKey: '',
   geminiApiKey: '',
   anthropicApiKey: '',
-  autoEmbed: true,
   semanticThreshold: 0.5,
 };
 
@@ -278,12 +278,16 @@ export class PKMSettingTab extends PluginSettingTab {
   // ─────────────────────────────────────────────────────────────
 
   private buildAIProviderSection(containerEl: HTMLElement, settings: PKMPluginSettings): void {
-    this.createSectionHeader(containerEl, 'AI Provider Settings', 'Configure your AI provider for semantic recommendations');
+    this.createSectionHeader(
+      containerEl,
+      'AI Provider Settings',
+      'Configure AI provider for connection reasons. Note: Embeddings are provided by Vault Embeddings plugin.'
+    );
 
     // Provider selection
     new Setting(containerEl)
       .setName('AI Provider')
-      .setDesc('Select which AI provider to use for generating embeddings')
+      .setDesc('Select which AI provider to use for generating connection reasons')
       .addDropdown((dropdown) =>
         dropdown
           .addOption('openai', 'OpenAI (recommended)')
@@ -329,18 +333,7 @@ export class PKMSettingTab extends PluginSettingTab {
         button.setButtonText('Test').onClick(() => this.testApiKey()),
       );
 
-    // Embedding options
-    new Setting(containerEl)
-      .setName('Auto-embed notes')
-      .setDesc('Automatically generate embeddings when notes are created or modified')
-      .addToggle((toggle) =>
-        toggle.setValue(settings.llm.autoEmbed).onChange(async (value) => {
-          await this.settingsAdapter.updateSettings({
-            llm: { ...settings.llm, autoEmbed: value },
-          });
-        }),
-      );
-
+    // Similarity threshold
     new Setting(containerEl)
       .setName('Semantic similarity threshold')
       .setDesc('Minimum similarity score for semantic recommendations (0-100%)')
@@ -357,6 +350,12 @@ export class PKMSettingTab extends PluginSettingTab {
             }
           }),
       );
+
+    // Info about Vault Embeddings
+    containerEl.createEl('p', {
+      text: 'Embeddings are managed by the Vault Embeddings plugin. Use its settings to configure embedding generation.',
+      cls: 'setting-item-description',
+    });
   }
 
   // ─────────────────────────────────────────────────────────────

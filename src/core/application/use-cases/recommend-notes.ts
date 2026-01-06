@@ -16,7 +16,19 @@
 import type { Note } from '../../domain/entities/note.js';
 import type { INoteRepository } from '../../domain/interfaces/note-repository.interface.js';
 import type { IGraphRepository } from '../../domain/interfaces/graph-repository.interface.js';
-import type { EmbeddingService } from '../services/embedding-service.js';
+import type { SimilarityResult } from '../../domain/interfaces/embedding-store.interface.js';
+
+/**
+ * Interface for embedding services used by this use case.
+ * Both EmbeddingService and VaultEmbeddingService implement this.
+ */
+export interface IEmbeddingServiceForRecommendations {
+  isReady(): boolean;
+  findSimilarNotes(
+    noteId: string,
+    options?: { limit?: number; threshold?: number }
+  ): Promise<SimilarityResult[]>;
+}
 
 // Request DTO
 export interface RecommendNotesRequest {
@@ -49,7 +61,7 @@ export interface RecommendNotesResponse {
  * Use case for recommending related notes based on various strategies
  */
 export class RecommendNotesUseCase {
-  private embeddingService: EmbeddingService | null = null;
+  private embeddingService: IEmbeddingServiceForRecommendations | null = null;
 
   constructor(
     private readonly noteRepository: INoteRepository,
@@ -57,9 +69,10 @@ export class RecommendNotesUseCase {
   ) {}
 
   /**
-   * Set the embedding service for semantic similarity
+   * Set the embedding service for semantic similarity.
+   * Accepts both EmbeddingService and VaultEmbeddingService.
    */
-  setEmbeddingService(service: EmbeddingService | null): void {
+  setEmbeddingService(service: IEmbeddingServiceForRecommendations | null): void {
     this.embeddingService = service;
   }
 
