@@ -28,6 +28,10 @@ export interface IEmbeddingServiceForRecommendations {
     noteId: string,
     options?: { limit?: number; threshold?: number }
   ): Promise<SimilarityResult[]>;
+  findSimilarNotesByPath?(
+    filePath: string,
+    options?: { limit?: number; threshold?: number }
+  ): Promise<SimilarityResult[]>;
 }
 
 // Request DTO
@@ -207,15 +211,27 @@ export class RecommendNotesUseCase {
     if (!this.embeddingService) return;
 
     try {
-      const similarNotes = await this.embeddingService.findSimilarNotes(sourceNote.id, {
-        limit,
-        threshold,
-      });
+      // Use filePath-based lookup (more reliable across different noteId formats)
+      let similarNotes: SimilarityResult[];
+      if (this.embeddingService.findSimilarNotesByPath) {
+        similarNotes = await this.embeddingService.findSimilarNotesByPath(sourceNote.filePath, {
+          limit,
+          threshold,
+        });
+      } else {
+        // Fallback to noteId-based lookup
+        similarNotes = await this.embeddingService.findSimilarNotes(sourceNote.id, {
+          limit,
+          threshold,
+        });
+      }
 
       for (const result of similarNotes) {
-        if (result.noteId === sourceNote.id) continue;
+        // Skip source note (compare by path for cross-plugin compatibility)
+        if (result.notePath === sourceNote.filePath) continue;
 
-        const note = await this.noteRepository.findById(result.noteId);
+        // Use findByPath for cross-plugin compatibility (noteId formats differ)
+        const note = await this.noteRepository.findByPath(result.notePath);
         if (!note) continue;
 
         const semanticScore = result.similarity;

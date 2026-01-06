@@ -76,6 +76,33 @@ export class VaultEmbeddingService {
   }
 
   /**
+   * Find similar notes by file path (more reliable across different plugins)
+   */
+  async findSimilarNotesByPath(
+    filePath: string,
+    options?: {
+      limit?: number;
+      threshold?: number;
+    }
+  ): Promise<SimilarityResult[]> {
+    // Use getByPath if available (VaultEmbeddingsReader)
+    let embedding = null;
+    if ('getByPath' in this.store) {
+      embedding = await (this.store as VaultEmbeddingsReader).getByPath(filePath);
+    }
+
+    if (!embedding) {
+      return [];
+    }
+
+    return this.store.findSimilar(embedding.embedding, {
+      limit: options?.limit ?? this.config.maxRecommendations,
+      threshold: options?.threshold ?? this.config.similarityThreshold,
+      excludeNoteIds: [embedding.noteId],
+    });
+  }
+
+  /**
    * Get embedding statistics
    */
   async getStats(): Promise<{

@@ -67,6 +67,7 @@ export class VaultEmbeddingsReader implements IEmbeddingStore {
   private app: App;
   private config: VaultEmbeddingsReaderConfig;
   private cache: Map<string, StoredEmbedding> = new Map();
+  private pathCache: Map<string, StoredEmbedding> = new Map(); // notePath → embedding
   private indexCache: VaultEmbeddingIndex | null = null;
   private lastCacheUpdate: number = 0;
   private readonly CACHE_TTL_MS = 60000; // 1 minute cache
@@ -93,6 +94,7 @@ export class VaultEmbeddingsReader implements IEmbeddingStore {
     }
 
     this.cache.clear();
+    this.pathCache.clear();
     this.indexCache = null;
 
     const index = await this.loadIndex();
@@ -108,6 +110,7 @@ export class VaultEmbeddingsReader implements IEmbeddingStore {
       const embedding = await this.loadEmbedding(noteId);
       if (embedding) {
         this.cache.set(noteId, embedding);
+        this.pathCache.set(embedding.notePath, embedding); // Also index by path
       }
     }
 
@@ -120,6 +123,14 @@ export class VaultEmbeddingsReader implements IEmbeddingStore {
   async get(noteId: string): Promise<StoredEmbedding | null> {
     await this.refreshCache();
     return this.cache.get(noteId) ?? null;
+  }
+
+  /**
+   * Get embedding by file path (more reliable than noteId across plugins)
+   */
+  async getByPath(notePath: string): Promise<StoredEmbedding | null> {
+    await this.refreshCache();
+    return this.pathCache.get(notePath) ?? null;
   }
 
   async exists(noteId: string): Promise<boolean> {
