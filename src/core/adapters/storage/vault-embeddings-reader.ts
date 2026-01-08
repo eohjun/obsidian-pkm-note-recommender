@@ -8,7 +8,7 @@
  * pre-generated embeddings from the centralized storage.
  */
 
-import { App, TFile, TFolder } from 'obsidian';
+import { App, TFile, normalizePath } from 'obsidian';
 import type {
   IEmbeddingStore,
   StoredEmbedding,
@@ -216,24 +216,36 @@ export class VaultEmbeddingsReader implements IEmbeddingStore {
   // ==================== Private Methods ====================
 
   private getIndexPath(): string {
-    return `${this.config.storagePath}/index.json`;
+    return normalizePath(`${this.config.storagePath}/index.json`);
   }
 
   private getEmbeddingPath(noteId: string): string {
     const safeId = noteId.replace(/[^a-zA-Z0-9-_]/g, '_');
-    return `${this.config.storagePath}/${this.config.embeddingsFolder}/${safeId}.json`;
+    return normalizePath(`${this.config.storagePath}/${this.config.embeddingsFolder}/${safeId}.json`);
   }
 
+  /**
+   * Load index.json with adapter fallback for Git sync compatibility
+   */
   private async loadIndex(): Promise<VaultEmbeddingIndex | null> {
     const indexPath = this.getIndexPath();
-    const file = this.app.vault.getAbstractFileByPath(indexPath);
 
-    if (!(file instanceof TFile)) {
-      return null;
+    // Try Obsidian index first, then adapter fallback
+    let content: string;
+    const file = this.app.vault.getAbstractFileByPath(indexPath);
+    if (file instanceof TFile) {
+      content = await this.app.vault.read(file);
+    } else {
+      // Obsidian index not synced - try adapter.read()
+      try {
+        content = await this.app.vault.adapter.read(indexPath);
+        console.log('VaultEmbeddingsReader: Used adapter.read for index');
+      } catch {
+        return null;
+      }
     }
 
     try {
-      const content = await this.app.vault.read(file);
       return JSON.parse(content) as VaultEmbeddingIndex;
     } catch {
       console.error('VaultEmbeddingsReader: Failed to parse index.json');
@@ -241,16 +253,27 @@ export class VaultEmbeddingsReader implements IEmbeddingStore {
     }
   }
 
+  /**
+   * Load individual embedding with adapter fallback
+   */
   private async loadEmbedding(noteId: string): Promise<StoredEmbedding | null> {
     const filePath = this.getEmbeddingPath(noteId);
-    const file = this.app.vault.getAbstractFileByPath(filePath);
 
-    if (!(file instanceof TFile)) {
-      return null;
+    // Try Obsidian index first, then adapter fallback
+    let content: string;
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (file instanceof TFile) {
+      content = await this.app.vault.read(file);
+    } else {
+      // Obsidian index not synced - try adapter.read()
+      try {
+        content = await this.app.vault.adapter.read(filePath);
+      } catch {
+        return null; // File doesn't exist
+      }
     }
 
     try {
-      const content = await this.app.vault.read(file);
       const data = JSON.parse(content) as VaultEmbeddingFile;
 
       // Map Vault Embeddings format to StoredEmbedding
@@ -282,11 +305,20 @@ export class VaultEmbeddingsReader implements IEmbeddingStore {
 
   /**
    * Check if Vault Embeddings data is available
+   * Uses adapter.exists() for Git sync compatibility
    */
-  isAvailable(): boolean {
+  async isAvailable(): Promise<boolean> {
     const indexPath = this.getIndexPath();
     const file = this.app.vault.getAbstractFileByPath(indexPath);
-    return file instanceof TFile;
+    if (file instanceof TFile) {
+      return true;
+    }
+    // Check via adapter for sync scenarios
+    try {
+      return await this.app.vault.adapter.exists(indexPath);
+    } catch {
+      return false;
+    }
   }
 
   /**
