@@ -1,9 +1,9 @@
 {
   "id": "pkm-note-recommender",
   "name": "PKM Note Recommender",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "minAppVersion": "1.0.0",
-  "description": "태그/그래프 연결 및 시맨틱 유사도 기반 관련 노트 추천. 임베딩은 Vault Embeddings 플러그인 사용.",
+  "description": "Recommend related notes based on tag/graph connections and semantic similarity using Vault Embeddings",
   "author": "PKM Project",
   "authorUrl": "https://github.com/eohjun",
   "isDesktopOnly": false

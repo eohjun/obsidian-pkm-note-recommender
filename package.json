@@ -1,6 +1,6 @@
 {
   "name": "obsidian-pkm-note-recommender",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "type": "module",
   "description": "Obsidian plugin for AI-powered semantic note recommendations with OpenAI, Gemini, and Anthropic support",
   "main": "main.js",
