@@ -10,7 +10,7 @@
  * - Converts between Obsidian TFile and domain Note entity
  */
 
-import type { App, TFile, CachedMetadata } from 'obsidian';
+import { normalizePath, type App, type TFile, type CachedMetadata } from 'obsidian';
 import { Note } from '../../domain/entities/note.js';
 import type {
   INoteRepository,
@@ -50,10 +50,11 @@ export class VaultAdapter implements INoteRepository {
   }
 
   /**
-   * Find a note by its file path
+   * Find a note by its file path (cross-platform safe)
    */
   async findByPath(filePath: string): Promise<Note | null> {
-    const file = this.app.vault.getAbstractFileByPath(filePath);
+    const normalizedPath = normalizePath(filePath);
+    const file = this.app.vault.getAbstractFileByPath(normalizedPath);
     if (!file || !this.isTFile(file)) return null;
 
     return this.fileToNote(file);
@@ -183,14 +184,15 @@ export class VaultAdapter implements INoteRepository {
   // Private helper methods
 
   /**
-   * Get all markdown files in the configured base folder
+   * Get all markdown files in the configured base folder (cross-platform safe)
    */
   private getNotesInFolder(): TFile[] {
+    const normalizedBasePath = normalizePath(this.basePath);
     return this.app.vault
       .getFiles()
       .filter(
         (file) =>
-          file.path.startsWith(this.basePath) && file.extension === 'md',
+          file.path.startsWith(normalizedBasePath) && file.extension === 'md',
       );
   }
 
