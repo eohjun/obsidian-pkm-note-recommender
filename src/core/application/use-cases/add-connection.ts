@@ -169,11 +169,13 @@ export class AddConnectionUseCase {
       const lastLinkIndex = content.lastIndexOf(lastLink, sectionEndOffset);
       const insertPosition = lastLinkIndex + lastLink.length;
 
+      // 빈 줄 없이 바로 다음 줄에 추가
+      const afterInsert = content.substring(insertPosition);
       return (
         content.substring(0, insertPosition) +
         '\n' +
         newConnection +
-        content.substring(insertPosition)
+        afterInsert.replace(/^\n/, '')
       );
     } else {
       // No existing links - insert right after heading with proper spacing

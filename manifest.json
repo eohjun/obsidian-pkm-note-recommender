@@ -1,7 +1,7 @@
 {
   "id": "pkm-note-recommender",
   "name": "PKM Note Recommender",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "minAppVersion": "1.0.0",
   "description": "Recommend related notes based on tag/graph connections and semantic similarity using Vault Embeddings",
   "author": "PKM Project",
