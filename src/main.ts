@@ -34,6 +34,7 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
   private connectionReasonService!: ConnectionReasonService;
   private addConnectionUseCase: AddConnectionUseCase | null = null;
   private statusBarItem: HTMLElement | null = null;
+  private isRefreshing = false;
 
   async onload(): Promise<void> {
     console.info('Loading PKM Note Recommender plugin');
@@ -76,6 +77,12 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
     if (this.connectionReasonService) {
       await this.connectionReasonService.saveCache(this);
     }
+
+    // Clean up references to prevent memory leaks
+    this.vaultEmbeddingsReader = null;
+    this.vaultEmbeddingService = null;
+    this.addConnectionUseCase = null;
+    this.statusBarItem = null;
   }
 
   private async initializeSettings(): Promise<void> {
@@ -139,6 +146,7 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
 
       if (!this.vaultEmbeddingsReader.isAvailable()) {
         console.warn('Vault Embeddings not available. Install Vault Embeddings plugin and run "Embed All Notes".');
+        new Notice('PKM Recommender: Vault Embeddings not available. Install and run "Embed All Notes" for semantic recommendations.');
         return;
       }
 
@@ -157,6 +165,7 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
       console.info(`Vault Embedding service initialized: ${stats.totalEmbeddings} embeddings from ${stats.model}`);
     } catch (error) {
       console.error('Failed to initialize embedding service:', error);
+      new Notice('PKM Recommender: Failed to initialize embedding service. Check console for details.');
     }
   }
 
@@ -327,13 +336,21 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
   }
 
   refreshRecommendations(): void {
+    if (this.isRefreshing) return;
+    this.isRefreshing = true;
+
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_RECOMMENDATIONS);
+    const promises: Promise<void>[] = [];
     for (const leaf of leaves) {
       const view = leaf.view;
       if (view instanceof RecommendationView) {
-        void view.refresh();
+        promises.push(view.refresh());
       }
     }
+
+    Promise.all(promises).finally(() => {
+      this.isRefreshing = false;
+    });
   }
 
   updateStatusBar(status: 'ready' | 'loading' | 'error' | number): void {

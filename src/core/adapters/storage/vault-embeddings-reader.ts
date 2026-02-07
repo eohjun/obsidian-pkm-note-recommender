@@ -67,8 +67,11 @@ export class VaultEmbeddingsReader implements IEmbeddingStore {
   private app: App;
   private config: VaultEmbeddingsReaderConfig;
   private cache: Map<string, StoredEmbedding> = new Map();
+  private lruOrder: string[] = [];
+  private readonly MAX_CACHE_SIZE = 200;
   private indexCache: VaultEmbeddingIndex | null = null;
   private lastCacheUpdate: number = 0;
+  private allLoaded = false;
   private readonly CACHE_TTL_MS = 60000; // 1 minute cache
 
   constructor(app: App, config?: Partial<VaultEmbeddingsReaderConfig>) {
@@ -84,7 +87,8 @@ export class VaultEmbeddingsReader implements IEmbeddingStore {
   }
 
   /**
-   * Refresh the cache from Vault Embeddings folder
+   * Refresh the index cache from Vault Embeddings folder.
+   * Loads only the index initially; individual embeddings are loaded on demand.
    */
   async refreshCache(force = false): Promise<void> {
     const now = Date.now();
@@ -93,6 +97,8 @@ export class VaultEmbeddingsReader implements IEmbeddingStore {
     }
 
     this.cache.clear();
+    this.lruOrder = [];
+    this.allLoaded = false;
     this.indexCache = null;
 
     const index = await this.loadIndex();
@@ -102,40 +108,83 @@ export class VaultEmbeddingsReader implements IEmbeddingStore {
     }
 
     this.indexCache = index;
+    this.lastCacheUpdate = now;
+    console.info(`VaultEmbeddingsReader: Index loaded with ${Object.keys(index.notes).length} entries`);
+  }
 
-    // Load all embeddings
-    for (const noteId of Object.keys(index.notes)) {
-      const embedding = await this.loadEmbedding(noteId);
-      if (embedding) {
-        this.cache.set(noteId, embedding);
+  /**
+   * Ensure all embeddings are loaded into cache (for similarity search).
+   * Only loads once per cache refresh cycle.
+   */
+  private async ensureAllLoaded(): Promise<void> {
+    if (this.allLoaded || !this.indexCache) return;
+
+    for (const noteId of Object.keys(this.indexCache.notes)) {
+      if (!this.cache.has(noteId)) {
+        const embedding = await this.loadEmbedding(noteId);
+        if (embedding) {
+          this.cache.set(noteId, embedding);
+        }
       }
     }
+    this.allLoaded = true;
+    console.info(`VaultEmbeddingsReader: All ${this.cache.size} embeddings loaded`);
+  }
 
-    this.lastCacheUpdate = now;
-    console.info(`VaultEmbeddingsReader: Loaded ${this.cache.size} embeddings from Vault Embeddings`);
+  /**
+   * LRU cache management: evict oldest entries when over limit.
+   * Only applies during on-demand loading (not when all are loaded).
+   */
+  private touchLru(noteId: string): void {
+    if (this.allLoaded) return;
+    const idx = this.lruOrder.indexOf(noteId);
+    if (idx > -1) this.lruOrder.splice(idx, 1);
+    this.lruOrder.push(noteId);
+
+    while (this.lruOrder.length > this.MAX_CACHE_SIZE) {
+      const evict = this.lruOrder.shift();
+      if (evict) this.cache.delete(evict);
+    }
   }
 
   // ==================== Read Operations ====================
 
   async get(noteId: string): Promise<StoredEmbedding | null> {
     await this.refreshCache();
-    return this.cache.get(noteId) ?? null;
+    // On-demand loading with LRU
+    if (this.cache.has(noteId)) {
+      this.touchLru(noteId);
+      return this.cache.get(noteId) ?? null;
+    }
+    // Load on demand if noteId exists in index
+    if (this.indexCache?.notes[noteId]) {
+      const embedding = await this.loadEmbedding(noteId);
+      if (embedding) {
+        this.cache.set(noteId, embedding);
+        this.touchLru(noteId);
+        return embedding;
+      }
+    }
+    return null;
   }
 
   async exists(noteId: string): Promise<boolean> {
     await this.refreshCache();
-    return this.cache.has(noteId);
+    return this.cache.has(noteId) || !!this.indexCache?.notes[noteId];
   }
 
   async isStale(noteId: string, currentContentHash: string): Promise<boolean> {
     await this.refreshCache();
-    const stored = this.cache.get(noteId);
-    if (!stored) return true;
-    return stored.contentHash !== currentContentHash;
+    // Check index first to avoid loading embedding
+    if (this.indexCache?.notes[noteId]) {
+      return this.indexCache.notes[noteId].contentHash !== currentContentHash;
+    }
+    return true;
   }
 
   async getAll(): Promise<StoredEmbedding[]> {
     await this.refreshCache();
+    await this.ensureAllLoaded();
     return Array.from(this.cache.values());
   }
 
@@ -148,6 +197,7 @@ export class VaultEmbeddingsReader implements IEmbeddingStore {
     }
   ): Promise<SimilarityResult[]> {
     await this.refreshCache();
+    await this.ensureAllLoaded();
 
     const limit = options?.limit ?? 10;
     const threshold = options?.threshold ?? 0.5;
