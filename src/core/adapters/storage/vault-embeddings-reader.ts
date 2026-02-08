@@ -119,6 +119,11 @@ export class VaultEmbeddingsReader implements IEmbeddingStore {
   private async ensureAllLoaded(): Promise<void> {
     if (this.allLoaded || !this.indexCache) return;
 
+    const noteCount = Object.keys(this.indexCache.notes).length;
+    if (noteCount > 5000) {
+      console.warn(`VaultEmbeddingsReader: Loading ${noteCount} embeddings into memory. Consider filtering for large vaults.`);
+    }
+
     for (const noteId of Object.keys(this.indexCache.notes)) {
       if (!this.cache.has(noteId)) {
         const embedding = await this.loadEmbedding(noteId);

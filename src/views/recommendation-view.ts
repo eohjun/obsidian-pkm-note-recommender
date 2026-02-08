@@ -99,7 +99,15 @@ export class RecommendationView extends ItemView {
     await this.refresh();
   }
 
-  async onClose(): Promise<void> {}
+  async onClose(): Promise<void> {
+    this.state.sourceContent = null;
+    this.state.sourceNoteId = null;
+    this.state.sourceFilePath = null;
+    this.state.sourceTitle = null;
+    this.state.recommendations = [];
+    this.isLoading = false;
+    this.containerEl.children[1]?.empty();
+  }
 
   async refresh(): Promise<void> {
     if (this.isLoading) return;
