@@ -131,7 +131,7 @@ export class GeminiAdapter extends BaseProvider {
   }
 
   async generateCompletion(request: TextCompletionRequest): Promise<TextCompletionResponse> {
-    const model = 'gemini-1.5-flash';
+    const model = 'gemini-2.5-flash';
 
     const response = await this.makeGeminiRequest<GeminiGenerateResponse>(
       `models/${model}:generateContent`,

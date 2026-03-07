@@ -117,8 +117,9 @@ export class OpenAIAdapter extends BaseProvider {
   }
 
   async generateCompletion(request: TextCompletionRequest): Promise<TextCompletionResponse> {
-    const model = 'gpt-4o-mini';
+    const model = 'gpt-5-mini';
 
+    // GPT-5 series are reasoning models: use max_completion_tokens, no temperature
     const response = await this.makeRequest<OpenAIChatResponse>('/chat/completions', {
       model,
       messages: [
@@ -129,8 +130,7 @@ export class OpenAIAdapter extends BaseProvider {
         },
         { role: 'user', content: request.prompt },
       ],
-      max_tokens: request.maxTokens ?? 200,
-      temperature: request.temperature ?? 0.3,
+      max_completion_tokens: request.maxTokens ?? 200,
     });
 
     return {

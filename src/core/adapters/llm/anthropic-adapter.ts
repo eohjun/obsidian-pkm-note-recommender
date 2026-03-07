@@ -145,7 +145,7 @@ export class AnthropicAdapter extends BaseProvider {
       );
     }
 
-    const model = 'claude-3-haiku-20240307';
+    const model = 'claude-haiku-4-5-20251001';
 
     const response = await this.makeClaudeRequest<ClaudeMessageResponse>('/messages', {
       model,
