@@ -69,6 +69,7 @@ export interface LLMProviderConfig {
   apiKey: string;
   baseUrl?: string;
   defaultModel?: string;
+  completionModel?: string;
 }
 
 /**

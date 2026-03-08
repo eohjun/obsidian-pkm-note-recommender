@@ -13,6 +13,7 @@
 import { PluginSettingTab, Setting, type App, type Plugin, Notice } from 'obsidian';
 import type { LLMProviderType } from '../../domain/interfaces/llm-provider.interface.js';
 import { LLM_PROVIDERS, validateApiKeyFormat } from '../llm/index.js';
+import { getCompletionModelsByProvider } from '../../domain/constants/model-configs.js';
 
 /**
  * LLM Provider settings
@@ -31,6 +32,8 @@ export interface LLMSettings {
   anthropicApiKey: string;
   /** Minimum similarity threshold for semantic recommendations */
   semanticThreshold: number;
+  /** Selected completion model per provider */
+  completionModels: Record<LLMProviderType, string>;
 }
 
 /**
@@ -68,6 +71,11 @@ export const DEFAULT_LLM_SETTINGS: LLMSettings = {
   geminiApiKey: '',
   anthropicApiKey: '',
   semanticThreshold: 0.5,
+  completionModels: {
+    openai: 'gpt-5-nano',
+    gemini: 'gemini-2.5-flash',
+    anthropic: 'claude-haiku-4-5-20251001',
+  },
 };
 
 /**
@@ -120,6 +128,14 @@ export class SettingsAdapter implements ISettingsAdapter {
     const data = await this.plugin.loadData();
     if (data) {
       this.settings = { ...DEFAULT_SETTINGS, ...data };
+
+      // Migrate: ensure llm.completionModels exists (for users upgrading from older versions)
+      if (!this.settings.llm.completionModels) {
+        this.settings.llm = {
+          ...this.settings.llm,
+          completionModels: { ...DEFAULT_LLM_SETTINGS.completionModels },
+        };
+      }
     }
   }
 
@@ -301,6 +317,33 @@ export class PKMSettingTab extends PluginSettingTab {
             this.display();
           }),
       );
+
+    // Completion model selection
+    const completionModels = getCompletionModelsByProvider(settings.llm.provider);
+    const selectedModel = settings.llm.completionModels[settings.llm.provider] ?? completionModels[0]?.id ?? '';
+
+    new Setting(containerEl)
+      .setName('Completion Model')
+      .setDesc('Model used for generating connection reasons. Reasoning models auto-adjust token budgets.')
+      .addDropdown((dropdown) => {
+        for (const model of completionModels) {
+          const label = model.deprecated
+            ? `${model.displayName} (deprecated)`
+            : model.isReasoning
+              ? `${model.displayName} (Reasoning)`
+              : model.displayName;
+          dropdown.addOption(model.id, label);
+        }
+        dropdown
+          .setValue(selectedModel)
+          .onChange(async (value) => {
+            const updatedModels = { ...settings.llm.completionModels };
+            updatedModels[settings.llm.provider] = value;
+            await this.settingsAdapter.updateSettings({
+              llm: { ...settings.llm, completionModels: updatedModels },
+            });
+          });
+      });
 
     // API key for selected provider
     const providerInfo = LLM_PROVIDERS[settings.llm.provider];

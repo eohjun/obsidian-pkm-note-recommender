@@ -27,5 +27,8 @@
 		"eslint": "^9.0.0",
 		"obsidian": "^1.11.0",
 		"typescript": "^5.2.2"
+	},
+	"dependencies": {
+		"obsidian-llm-shared": "github:eohjun/obsidian-llm-shared"
 	}
 }

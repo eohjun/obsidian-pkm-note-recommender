@@ -178,9 +178,13 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
     const apiKey = this.getApiKeyForProvider();
     if (apiKey && this.settings.useSemanticSimilarity) {
       try {
-        const provider = createLLMProvider(this.settings.llm.provider, { apiKey });
+        const selectedModel = this.settings.llm.completionModels?.[this.settings.llm.provider];
+        const provider = createLLMProvider(this.settings.llm.provider, {
+          apiKey,
+          completionModel: selectedModel,
+        });
         this.connectionReasonService.setProvider(provider);
-        console.info('ConnectionReasonService initialized with LLM provider');
+        console.info(`ConnectionReasonService initialized with ${this.settings.llm.provider}/${selectedModel ?? 'default'}`);
       } catch (error) {
         console.error('Failed to initialize ConnectionReasonService LLM provider:', error);
       }
@@ -217,7 +221,11 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
     const apiKey = this.getApiKeyForProvider();
     if (apiKey && this.settings.useSemanticSimilarity) {
       try {
-        const provider = createLLMProvider(this.settings.llm.provider, { apiKey });
+        const selectedModel = this.settings.llm.completionModels?.[this.settings.llm.provider];
+        const provider = createLLMProvider(this.settings.llm.provider, {
+          apiKey,
+          completionModel: selectedModel,
+        });
         this.connectionReasonService.setProvider(provider);
       } catch (error) {
         console.error('Failed to reinitialize ConnectionReasonService LLM provider:', error);

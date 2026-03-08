@@ -23,6 +23,7 @@ import type {
 import { BaseProvider } from './base-provider.js';
 import { normalizeError } from '../../domain/errors/index.js';
 import { executeWithRetry } from '../../application/services/retry-service.js';
+import { getThinkingConfig } from '../../domain/constants/model-configs.js';
 
 /**
  * Voyage AI model configurations
@@ -55,6 +56,7 @@ interface VoyageEmbeddingResponse {
 
 interface ClaudeMessageResponse {
   content?: Array<{
+    type?: string; // 'text' | 'thinking'
     text?: string;
   }>;
   usage?: {
@@ -70,7 +72,7 @@ export class AnthropicAdapter extends BaseProvider {
   readonly providerType: LLMProviderType = 'anthropic';
 
   constructor(config: LLMProviderConfig) {
-    super(config, DEFAULT_BASE_URL, DEFAULT_MODEL);
+    super(config, DEFAULT_BASE_URL, DEFAULT_MODEL, 'claude-haiku-4-5-20251001');
   }
 
   isConfigured(): boolean {
@@ -145,20 +147,36 @@ export class AnthropicAdapter extends BaseProvider {
       );
     }
 
-    const model = 'claude-haiku-4-5-20251001';
+    const model = this.completionModel;
+    const effectiveTokens = this.getEffectiveCompletionTokens(request.maxTokens ?? 200);
+    const thinkingConfig = getThinkingConfig(model);
 
-    const response = await this.makeClaudeRequest<ClaudeMessageResponse>('/messages', {
+    const body: Record<string, unknown> = {
       model,
-      max_tokens: request.maxTokens ?? 200,
+      max_tokens: effectiveTokens,
       messages: [
         {
           role: 'user',
           content: request.prompt,
         },
       ],
-    });
+    };
 
-    const text = response.content?.[0]?.text ?? '';
+    // Extended thinking: Opus 4.6 (adaptive) / Sonnet 4.6 (enabled with budget)
+    // When thinking is active, temperature must not be set
+    if (thinkingConfig) {
+      body.thinking = thinkingConfig;
+    } else if (request.temperature !== undefined) {
+      body.temperature = request.temperature;
+    }
+
+    const response = await this.makeClaudeRequest<ClaudeMessageResponse>('/messages', body);
+
+    // Filter out thinking blocks, extract only text content
+    const text = response.content
+      ?.filter((block) => block.type === 'text')
+      .map((block) => block.text ?? '')
+      .join('') ?? '';
 
     return {
       text,

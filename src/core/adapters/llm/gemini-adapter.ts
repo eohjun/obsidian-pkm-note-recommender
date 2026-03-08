@@ -68,7 +68,7 @@ export class GeminiAdapter extends BaseProvider {
   readonly providerType: LLMProviderType = 'gemini';
 
   constructor(config: LLMProviderConfig) {
-    super(config, DEFAULT_BASE_URL, DEFAULT_MODEL);
+    super(config, DEFAULT_BASE_URL, DEFAULT_MODEL, 'gemini-2.5-flash');
   }
 
   isConfigured(): boolean {
@@ -131,8 +131,11 @@ export class GeminiAdapter extends BaseProvider {
   }
 
   async generateCompletion(request: TextCompletionRequest): Promise<TextCompletionResponse> {
-    const model = 'gemini-2.5-flash';
+    const model = this.completionModel;
+    const effectiveTokens = this.getEffectiveCompletionTokens(request.maxTokens ?? 200);
 
+    // Gemini thinking models: thinkingBudget is separate from maxOutputTokens,
+    // so temperature is still supported and tokens don't need as much scaling
     const response = await this.makeGeminiRequest<GeminiGenerateResponse>(
       `models/${model}:generateContent`,
       {
@@ -142,7 +145,7 @@ export class GeminiAdapter extends BaseProvider {
           },
         ],
         generationConfig: {
-          maxOutputTokens: request.maxTokens ?? 200,
+          maxOutputTokens: effectiveTokens,
           temperature: request.temperature ?? 0.3,
         },
       },

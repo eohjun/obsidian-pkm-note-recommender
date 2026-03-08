@@ -63,7 +63,7 @@ export class OpenAIAdapter extends BaseProvider {
   readonly providerType: LLMProviderType = 'openai';
 
   constructor(config: LLMProviderConfig) {
-    super(config, DEFAULT_BASE_URL, DEFAULT_MODEL);
+    super(config, DEFAULT_BASE_URL, DEFAULT_MODEL, 'gpt-5-nano');
   }
 
   isConfigured(): boolean {
@@ -117,10 +117,12 @@ export class OpenAIAdapter extends BaseProvider {
   }
 
   async generateCompletion(request: TextCompletionRequest): Promise<TextCompletionResponse> {
-    const model = 'gpt-5-mini';
+    const model = this.completionModel;
+    const isReasoning = this.isCompletionModelReasoning();
+    const effectiveTokens = this.getEffectiveCompletionTokens(request.maxTokens ?? 200);
 
-    // GPT-5 series are reasoning models: use max_completion_tokens, no temperature
-    const response = await this.makeRequest<OpenAIChatResponse>('/chat/completions', {
+    // Build request body: reasoning models use max_completion_tokens and no temperature
+    const body: Record<string, unknown> = {
       model,
       messages: [
         {
@@ -130,8 +132,18 @@ export class OpenAIAdapter extends BaseProvider {
         },
         { role: 'user', content: request.prompt },
       ],
-      max_completion_tokens: request.maxTokens ?? 200,
-    });
+    };
+
+    if (isReasoning) {
+      body.max_completion_tokens = effectiveTokens;
+    } else {
+      body.max_tokens = effectiveTokens;
+      if (request.temperature !== undefined) {
+        body.temperature = request.temperature;
+      }
+    }
+
+    const response = await this.makeRequest<OpenAIChatResponse>('/chat/completions', body);
 
     return {
       text: response.choices[0]?.message?.content ?? '',

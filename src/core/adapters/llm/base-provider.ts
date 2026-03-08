@@ -27,6 +27,10 @@ import {
   type LLMError,
 } from '../../domain/errors/index.js';
 import { executeWithRetry, type RetryOptions } from '../../application/services/retry-service.js';
+import {
+  isReasoningModel,
+  getEffectiveMaxTokens,
+} from '../../domain/constants/model-configs.js';
 
 /**
  * Default retry options for LLM API calls
@@ -55,13 +59,34 @@ export abstract class BaseProvider implements ILLMProvider {
   protected readonly apiKey: string;
   protected readonly baseUrl: string;
   protected readonly defaultModel: string;
+  protected readonly completionModel: string;
   protected readonly retryOptions: Partial<RetryOptions>;
 
-  constructor(config: LLMProviderConfig, defaultBaseUrl: string, defaultModelName: string) {
+  constructor(
+    config: LLMProviderConfig,
+    defaultBaseUrl: string,
+    defaultModelName: string,
+    defaultCompletionModel: string,
+  ) {
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl ?? defaultBaseUrl;
     this.defaultModel = config.defaultModel ?? defaultModelName;
+    this.completionModel = config.completionModel ?? defaultCompletionModel;
     this.retryOptions = LLM_RETRY_OPTIONS;
+  }
+
+  /**
+   * Check if the completion model is a reasoning model
+   */
+  protected isCompletionModelReasoning(): boolean {
+    return isReasoningModel(this.completionModel);
+  }
+
+  /**
+   * Get effective completion tokens, auto-scaling for reasoning models
+   */
+  protected getEffectiveCompletionTokens(requestedTokens: number): number {
+    return getEffectiveMaxTokens(this.completionModel, requestedTokens);
   }
 
   /**
