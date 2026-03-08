@@ -1,10 +1,12 @@
 /**
- * Gemini (Google) Adapter
+ * Gemini (Google) Adapter — 공유 빌더/파서 사용
  *
  * Implements ILLMProvider for Google's Gemini embedding API.
  * Extends BaseProvider for common functionality.
  *
  * Note: Gemini uses API key in URL query parameter, not Authorization header.
+ *
+ * 수정: 인라인 빌드 → buildGeminiBody/parseGeminiResponse 전환
  */
 
 import { requestUrl, type RequestUrlParam } from 'obsidian';
@@ -21,6 +23,7 @@ import type {
 import { BaseProvider } from './base-provider.js';
 import { normalizeError } from '../../domain/errors/index.js';
 import { executeWithRetry } from '../../application/services/retry-service.js';
+import { buildGeminiBody, parseGeminiResponse } from 'obsidian-llm-shared';
 
 /**
  * Gemini model configurations
@@ -46,19 +49,6 @@ interface GeminiBatchEmbeddingResponse {
   embeddings: Array<{
     values: number[];
   }>;
-}
-
-interface GeminiGenerateResponse {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{
-        text?: string;
-      }>;
-    };
-  }>;
-  usageMetadata?: {
-    totalTokenCount?: number;
-  };
 }
 
 /**
@@ -132,31 +122,23 @@ export class GeminiAdapter extends BaseProvider {
 
   async generateCompletion(request: TextCompletionRequest): Promise<TextCompletionResponse> {
     const model = this.completionModel;
-    const effectiveTokens = this.getEffectiveCompletionTokens(request.maxTokens ?? 200);
+    const messages = [{ role: 'user' as const, content: request.prompt }];
+    const body = buildGeminiBody(messages, model, {
+      maxTokens: request.maxTokens ?? 200,
+      temperature: request.temperature ?? 0.3,
+    });
 
-    // Gemini thinking models: thinkingBudget is separate from maxOutputTokens,
-    // so temperature is still supported and tokens don't need as much scaling
-    const response = await this.makeGeminiRequest<GeminiGenerateResponse>(
+    const json = await this.makeGeminiRequest<Record<string, unknown>>(
       `models/${model}:generateContent`,
-      {
-        contents: [
-          {
-            parts: [{ text: request.prompt }],
-          },
-        ],
-        generationConfig: {
-          maxOutputTokens: effectiveTokens,
-          temperature: request.temperature ?? 0.3,
-        },
-      },
+      body,
     );
-
-    const text = response.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const result = parseGeminiResponse(json);
+    if (!result.success) throw new Error(result.error || 'Gemini API error');
 
     return {
-      text,
+      text: result.text,
       model,
-      tokenCount: response.usageMetadata?.totalTokenCount ?? 0,
+      tokenCount: result.usage.totalTokens,
     };
   }
 

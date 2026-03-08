@@ -1,5 +1,5 @@
 /**
- * Anthropic Adapter
+ * Anthropic Adapter — 공유 빌더/파서 사용
  *
  * Implements ILLMProvider using Voyage AI (Anthropic's recommended embedding solution).
  * Voyage AI provides high-quality embeddings optimized for retrieval tasks.
@@ -7,6 +7,8 @@
  *
  * Note: Anthropic doesn't have a native embedding API. Voyage AI is their official
  * partner for embeddings. Users need a Voyage AI API key (starts with 'pa-' or 'voyage-').
+ *
+ * 수정: 인라인 빌드 → buildAnthropicBody/parseAnthropicResponse 전환
  */
 
 import { requestUrl, type RequestUrlParam } from 'obsidian';
@@ -23,7 +25,7 @@ import type {
 import { BaseProvider } from './base-provider.js';
 import { normalizeError } from '../../domain/errors/index.js';
 import { executeWithRetry } from '../../application/services/retry-service.js';
-import { getThinkingConfig } from '../../domain/constants/model-configs.js';
+import { buildAnthropicBody, parseAnthropicResponse } from 'obsidian-llm-shared';
 
 /**
  * Voyage AI model configurations
@@ -51,17 +53,6 @@ interface VoyageEmbeddingResponse {
   model: string;
   usage?: {
     total_tokens: number;
-  };
-}
-
-interface ClaudeMessageResponse {
-  content?: Array<{
-    type?: string; // 'text' | 'thinking'
-    text?: string;
-  }>;
-  usage?: {
-    input_tokens: number;
-    output_tokens: number;
   };
 }
 
@@ -136,10 +127,6 @@ export class AnthropicAdapter extends BaseProvider {
   }
 
   async generateCompletion(request: TextCompletionRequest): Promise<TextCompletionResponse> {
-    // For completion, we need to use the Anthropic Claude API
-    // This requires an Anthropic API key (starts with 'sk-ant-')
-    // Voyage AI keys (pa-*) only work for embeddings
-
     if (!this.apiKey.startsWith('sk-ant-')) {
       throw new Error(
         'Text completion requires an Anthropic API key (sk-ant-*). ' +
@@ -148,40 +135,20 @@ export class AnthropicAdapter extends BaseProvider {
     }
 
     const model = this.completionModel;
-    const effectiveTokens = this.getEffectiveCompletionTokens(request.maxTokens ?? 200);
-    const thinkingConfig = getThinkingConfig(model);
+    const messages = [{ role: 'user' as const, content: request.prompt }];
+    const body = buildAnthropicBody(messages, model, {
+      maxTokens: request.maxTokens ?? 200,
+      temperature: request.temperature,
+    });
 
-    const body: Record<string, unknown> = {
-      model,
-      max_tokens: effectiveTokens,
-      messages: [
-        {
-          role: 'user',
-          content: request.prompt,
-        },
-      ],
-    };
-
-    // Extended thinking: Opus 4.6 (adaptive) / Sonnet 4.6 (enabled with budget)
-    // When thinking is active, temperature must not be set
-    if (thinkingConfig) {
-      body.thinking = thinkingConfig;
-    } else if (request.temperature !== undefined) {
-      body.temperature = request.temperature;
-    }
-
-    const response = await this.makeClaudeRequest<ClaudeMessageResponse>('/messages', body);
-
-    // Filter out thinking blocks, extract only text content
-    const text = response.content
-      ?.filter((block) => block.type === 'text')
-      .map((block) => block.text ?? '')
-      .join('') ?? '';
+    const json = await this.makeClaudeRequest<Record<string, unknown>>('/messages', body);
+    const result = parseAnthropicResponse(json);
+    if (!result.success) throw new Error(result.error || 'Anthropic API error');
 
     return {
-      text,
+      text: result.text,
       model,
-      tokenCount: (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0),
+      tokenCount: result.usage.totalTokens,
     };
   }
 

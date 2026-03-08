@@ -1,8 +1,10 @@
 /**
- * OpenAI Adapter
+ * OpenAI Adapter — 공유 빌더/파서 사용
  *
  * Implements ILLMProvider for OpenAI's embedding and completion APIs.
  * Extends BaseProvider for common functionality.
+ *
+ * 수정: 인라인 빌드 → buildOpenAIBody/parseOpenAIResponse 전환
  */
 
 import type {
@@ -16,6 +18,7 @@ import type {
   TextCompletionResponse,
 } from '../../domain/interfaces/llm-provider.interface.js';
 import { BaseProvider } from './base-provider.js';
+import { buildOpenAIBody, parseOpenAIResponse } from 'obsidian-llm-shared';
 
 /**
  * OpenAI model configurations
@@ -40,18 +43,6 @@ interface OpenAIEmbeddingResponse {
   model: string;
   usage?: {
     prompt_tokens: number;
-    total_tokens: number;
-  };
-}
-
-interface OpenAIChatResponse {
-  choices: Array<{
-    message: {
-      content: string;
-    };
-  }>;
-  model: string;
-  usage?: {
     total_tokens: number;
   };
 }
@@ -118,37 +109,23 @@ export class OpenAIAdapter extends BaseProvider {
 
   async generateCompletion(request: TextCompletionRequest): Promise<TextCompletionResponse> {
     const model = this.completionModel;
-    const isReasoning = this.isCompletionModelReasoning();
-    const effectiveTokens = this.getEffectiveCompletionTokens(request.maxTokens ?? 200);
+    const messages = [
+      { role: 'system' as const, content: 'You are a helpful assistant that analyzes note connections in a PKM system. Always respond in JSON format when requested.' },
+      { role: 'user' as const, content: request.prompt },
+    ];
+    const body = buildOpenAIBody(messages, model, {
+      maxTokens: request.maxTokens ?? 200,
+      temperature: request.temperature,
+    });
 
-    // Build request body: reasoning models use max_completion_tokens and no temperature
-    const body: Record<string, unknown> = {
-      model,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a helpful assistant that analyzes note connections in a PKM system. Always respond in JSON format when requested.',
-        },
-        { role: 'user', content: request.prompt },
-      ],
-    };
-
-    if (isReasoning) {
-      body.max_completion_tokens = effectiveTokens;
-    } else {
-      body.max_tokens = effectiveTokens;
-      if (request.temperature !== undefined) {
-        body.temperature = request.temperature;
-      }
-    }
-
-    const response = await this.makeRequest<OpenAIChatResponse>('/chat/completions', body);
+    const json = await this.makeRequest<Record<string, unknown>>('/chat/completions', body);
+    const result = parseOpenAIResponse(json);
+    if (!result.success) throw new Error(result.error || 'OpenAI API error');
 
     return {
-      text: response.choices[0]?.message?.content ?? '',
+      text: result.text,
       model,
-      tokenCount: response.usage?.total_tokens ?? 0,
+      tokenCount: result.usage.totalTokens,
     };
   }
 
