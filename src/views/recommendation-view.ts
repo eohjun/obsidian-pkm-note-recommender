@@ -92,7 +92,7 @@ export class RecommendationView extends ItemView {
     const refreshBtn = header.createEl('button', { cls: 'pkm-refresh-btn' });
     refreshBtn.setText('↻');
     refreshBtn.setAttribute('aria-label', 'Refresh recommendations');
-    refreshBtn.addEventListener('click', () => this.refresh());
+    refreshBtn.addEventListener('click', () => this.refresh(true));
 
     container.createEl('div', { cls: 'pkm-recommendations-content' });
 
@@ -109,7 +109,7 @@ export class RecommendationView extends ItemView {
     this.containerEl.children[1]?.empty();
   }
 
-  async refresh(): Promise<void> {
+  async refresh(forceRefresh = false): Promise<void> {
     if (this.isLoading) return;
 
     const contentEl = this.containerEl.querySelector('.pkm-recommendations-content');
@@ -181,6 +181,9 @@ export class RecommendationView extends ItemView {
 
       // Start loading connection reasons in background
       if (this.connectionReasonService?.isReady()) {
+        if (forceRefresh && this.state.sourceNoteId) {
+          this.connectionReasonService.clearCacheForSource(this.state.sourceNoteId);
+        }
         void this.loadConnectionReasons();
       }
     } catch (error) {

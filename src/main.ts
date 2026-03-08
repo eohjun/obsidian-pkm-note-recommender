@@ -246,7 +246,7 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
     this.addCommand({
       id: 'pkm-refresh-recommendations',
       name: 'Refresh note recommendations',
-      callback: () => { this.refreshRecommendations(); },
+      callback: () => { this.refreshRecommendations(true); },
     });
 
     this.addCommand({
@@ -343,7 +343,7 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
     }
   }
 
-  refreshRecommendations(): void {
+  refreshRecommendations(forceRefresh = false): void {
     if (this.isRefreshing) return;
     this.isRefreshing = true;
 
@@ -352,7 +352,7 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
     for (const leaf of leaves) {
       const view = leaf.view;
       if (view instanceof RecommendationView) {
-        promises.push(view.refresh());
+        promises.push(view.refresh(forceRefresh));
       }
     }
 

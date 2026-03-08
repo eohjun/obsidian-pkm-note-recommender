@@ -313,6 +313,23 @@ export class ConnectionReasonService {
   }
 
   /**
+   * Clear cached reasons for a specific source note.
+   * Used when user explicitly requests a refresh.
+   */
+  clearCacheForSource(sourceNoteId: string): void {
+    for (const [key, cached] of this.cache) {
+      if (cached.sourceNoteId === sourceNoteId) {
+        this.cache.delete(key);
+      }
+    }
+    for (const [key] of this.pendingRequests) {
+      if (key.startsWith(`${sourceNoteId}:`)) {
+        this.pendingRequests.delete(key);
+      }
+    }
+  }
+
+  /**
    * Get cache statistics
    */
   getCacheStats(): { size: number; pendingCount: number } {
