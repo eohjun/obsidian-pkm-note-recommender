@@ -72,9 +72,9 @@ export const DEFAULT_LLM_SETTINGS: LLMSettings = {
   anthropicApiKey: '',
   semanticThreshold: 0.5,
   completionModels: {
-    openai: 'gpt-5-nano',
+    openai: 'gpt-5.4-nano',
     gemini: 'gemini-2.5-flash',
-    anthropic: 'claude-haiku-4-5-20251001',
+    anthropic: 'claude-haiku-4-5',
   },
 };
 
@@ -127,15 +127,18 @@ export class SettingsAdapter implements ISettingsAdapter {
   async loadSettings(): Promise<void> {
     const data = await this.plugin.loadData();
     if (data) {
-      this.settings = { ...DEFAULT_SETTINGS, ...data };
-
-      // Migrate: ensure llm.completionModels exists (for users upgrading from older versions)
-      if (!this.settings.llm.completionModels) {
-        this.settings.llm = {
-          ...this.settings.llm,
-          completionModels: { ...DEFAULT_LLM_SETTINGS.completionModels },
-        };
-      }
+      this.settings = {
+        ...DEFAULT_SETTINGS,
+        ...data,
+        llm: {
+          ...DEFAULT_LLM_SETTINGS,
+          ...(data.llm || {}),
+          completionModels: {
+            ...DEFAULT_LLM_SETTINGS.completionModels,
+            ...(data.llm?.completionModels || {}),
+          },
+        },
+      };
     }
   }
 
@@ -311,8 +314,9 @@ export class PKMSettingTab extends PluginSettingTab {
           .addOption('anthropic', 'Anthropic (Voyage AI)')
           .setValue(settings.llm.provider)
           .onChange(async (value) => {
+            const current = this.settingsAdapter.getSettings();
             await this.settingsAdapter.updateSettings({
-              llm: { ...settings.llm, provider: value as LLMProviderType },
+              llm: { ...current.llm, provider: value as LLMProviderType },
             });
             this.display();
           }),
@@ -337,10 +341,11 @@ export class PKMSettingTab extends PluginSettingTab {
         dropdown
           .setValue(selectedModel)
           .onChange(async (value) => {
-            const updatedModels = { ...settings.llm.completionModels };
-            updatedModels[settings.llm.provider] = value;
+            const current = this.settingsAdapter.getSettings();
+            const updatedModels = { ...current.llm.completionModels };
+            updatedModels[current.llm.provider] = value;
             await this.settingsAdapter.updateSettings({
-              llm: { ...settings.llm, completionModels: updatedModels },
+              llm: { ...current.llm, completionModels: updatedModels },
             });
           });
       });
@@ -357,8 +362,9 @@ export class PKMSettingTab extends PluginSettingTab {
           .setPlaceholder(providerInfo.keyPlaceholder)
           .setValue(apiKeyField)
           .onChange(async (value) => {
-            const llmUpdate = { ...settings.llm };
-            switch (settings.llm.provider) {
+            const current = this.settingsAdapter.getSettings();
+            const llmUpdate = { ...current.llm };
+            switch (current.llm.provider) {
               case 'openai':
                 llmUpdate.openaiApiKey = value;
                 break;
@@ -387,8 +393,9 @@ export class PKMSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             const num = parseInt(value, 10);
             if (!isNaN(num) && num >= 0 && num <= 100) {
+              const current = this.settingsAdapter.getSettings();
               await this.settingsAdapter.updateSettings({
-                llm: { ...settings.llm, semanticThreshold: num / 100 },
+                llm: { ...current.llm, semanticThreshold: num / 100 },
               });
             }
           }),

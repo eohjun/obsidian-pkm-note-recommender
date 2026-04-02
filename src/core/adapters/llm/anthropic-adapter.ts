@@ -63,7 +63,7 @@ export class AnthropicAdapter extends BaseProvider {
   readonly providerType: LLMProviderType = 'anthropic';
 
   constructor(config: LLMProviderConfig) {
-    super(config, DEFAULT_BASE_URL, DEFAULT_MODEL, 'claude-haiku-4-5-20251001');
+    super(config, DEFAULT_BASE_URL, DEFAULT_MODEL, 'claude-haiku-4-5');
   }
 
   isConfigured(): boolean {

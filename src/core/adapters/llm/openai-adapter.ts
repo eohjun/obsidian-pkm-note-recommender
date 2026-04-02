@@ -54,7 +54,7 @@ export class OpenAIAdapter extends BaseProvider {
   readonly providerType: LLMProviderType = 'openai';
 
   constructor(config: LLMProviderConfig) {
-    super(config, DEFAULT_BASE_URL, DEFAULT_MODEL, 'gpt-5-nano');
+    super(config, DEFAULT_BASE_URL, DEFAULT_MODEL, 'gpt-5.4-nano');
   }
 
   isConfigured(): boolean {
