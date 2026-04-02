@@ -110,6 +110,7 @@ export interface ISettingsAdapter {
 export class SettingsAdapter implements ISettingsAdapter {
   private readonly plugin: Plugin;
   private settings: PKMPluginSettings;
+  private onChangeCallback: (() => Promise<void>) | null = null;
 
   /**
    * Create a new SettingsAdapter
@@ -119,6 +120,13 @@ export class SettingsAdapter implements ISettingsAdapter {
   constructor(plugin: Plugin) {
     this.plugin = plugin;
     this.settings = { ...DEFAULT_SETTINGS };
+  }
+
+  /**
+   * Register a callback to be called when settings change
+   */
+  onChange(callback: () => Promise<void>): void {
+    this.onChangeCallback = callback;
   }
 
   /**
@@ -155,6 +163,9 @@ export class SettingsAdapter implements ISettingsAdapter {
   async updateSettings(partial: Partial<PKMPluginSettings>): Promise<void> {
     this.settings = { ...this.settings, ...partial };
     await this.plugin.saveData(this.settings);
+    if (this.onChangeCallback) {
+      await this.onChangeCallback();
+    }
   }
 
   /**

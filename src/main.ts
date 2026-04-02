@@ -89,6 +89,11 @@ export default class PKMNoteRecommenderPlugin extends Plugin {
     this.settingsAdapter = new SettingsAdapter(this);
     await this.settingsAdapter.loadSettings();
     this.settings = this.settingsAdapter.getSettings();
+
+    this.settingsAdapter.onChange(async () => {
+      this.settings = this.settingsAdapter.getSettings();
+      await this.reinitializeEmbeddingService();
+    });
   }
 
   private initializeAdapters(): void {
