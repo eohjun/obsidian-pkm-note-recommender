@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-pkm-note-recommender",
-	"version": "0.5.24",
+	"version": "0.5.25",
 	"type": "module",
 	"description": "Obsidian plugin for AI-powered semantic note recommendations with OpenAI, Gemini, and Anthropic support",
 	"main": "main.js",
@@ -28,7 +28,7 @@
 		"esbuild": "^0.27.0",
 		"eslint": "^9.0.0",
 		"obsidian": "^1.11.0",
-		"obsidian-llm-shared": "github:eohjun/obsidian-llm-shared#v1.4.0",
+		"obsidian-llm-shared": "github:eohjun/obsidian-llm-shared#v1.4.1",
 		"typescript": "^6.0.2"
 	}
 }
