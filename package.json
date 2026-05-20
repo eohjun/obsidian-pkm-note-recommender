@@ -19,8 +19,8 @@
 	"author": "eohjun",
 	"license": "MIT",
 	"devDependencies": {
-		"@codemirror/state": "^6.6.0",
-		"@codemirror/view": "^6.41.1",
+		"@codemirror/state": "6.5.0",
+		"@codemirror/view": "6.38.6",
 		"@types/node": "^20.19.39",
 		"@typescript-eslint/eslint-plugin": "^8.0.0",
 		"@typescript-eslint/parser": "^8.0.0",
